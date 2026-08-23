@@ -55,6 +55,22 @@ function autoFillAiInRoom(room) {
     }
 }
 
+function resetRoomState(room) {
+    room.gameState = 'LOBBY';
+    room.deck = [];
+    room.hands = {};
+    room.kitty = [];
+    room.highestBid = 60;
+    room.dealer = -1;
+    room.trumpSuit = '';
+    room.teamAScore = 0;
+    room.teamBScore = 0;
+    room.bidTurn = 0;
+    room.playerPassed = [false, false, false, false];
+    room.currentRoundCards = [null, null, null, null];
+    room.starterPlayer = 0;
+}
+
 io.on('connection', (socket) => {
     // สร้างห้องปกติ
     socket.on('createRoom', (playerName) => {
@@ -62,21 +78,9 @@ io.on('connection', (socket) => {
         const room = {
             id: roomId,
             hostId: socket.id,
-            seats: [null, null, null, null],
-            gameState: 'LOBBY',
-            deck: [],
-            hands: {},
-            kitty: [],
-            highestBid: 60,
-            dealer: -1,
-            trumpSuit: '',
-            teamAScore: 0,
-            teamBScore: 0,
-            bidTurn: 0,
-            playerPassed: [false, false, false, false],
-            currentRoundCards: [null, null, null, null],
-            starterPlayer: 0
+            seats: [null, null, null, null]
         };
+        resetRoomState(room);
         
         room.seats[0] = { id: socket.id, name: playerName, seat: 0, isAi: false };
         rooms[roomId] = room;
@@ -92,21 +96,9 @@ io.on('connection', (socket) => {
         const room = {
             id: roomId,
             hostId: socket.id,
-            seats: [null, null, null, null],
-            gameState: 'LOBBY',
-            deck: [],
-            hands: {},
-            kitty: [],
-            highestBid: 60,
-            dealer: -1,
-            trumpSuit: '',
-            teamAScore: 0,
-            teamBScore: 0,
-            bidTurn: 0,
-            playerPassed: [false, false, false, false],
-            currentRoundCards: [null, null, null, null],
-            starterPlayer: 0
+            seats: [null, null, null, null]
         };
+        resetRoomState(room);
 
         room.seats[0] = { id: socket.id, name: playerName, seat: 0, isAi: false };
         rooms[roomId] = room;
@@ -171,6 +163,18 @@ io.on('connection', (socket) => {
         startGame(roomId);
     });
 
+    // กดเล่นอีกครั้งหลังจบเกม
+    socket.on('restartGameReq', ({ roomId }) => {
+        const room = rooms[roomId];
+        if (!room) return;
+
+        // รีเซ็ตค่าการเล่นในห้องเดิม แต่รักษาผู้เล่นและเก้าอี้เดิมไว้
+        resetRoomState(room);
+        
+        // เริ่มรอบใหม่ทันที
+        startGame(roomId);
+    });
+
     socket.on('submitBid', ({ roomId, bidValue, isPass }) => {
         handleBid(roomId, socket.id, bidValue, isPass);
     });
@@ -197,6 +201,9 @@ function startGame(roomId) {
     room.bidTurn = 0;
     room.playerPassed = [false, false, false, false];
     room.highestBid = 60;
+    room.teamAScore = 0;
+    room.teamBScore = 0;
+    room.currentRoundCards = [null, null, null, null];
     
     room.seats.forEach(p => {
         if (p) {
@@ -385,9 +392,15 @@ function evaluateRound(roomId) {
     room.starterPlayer = winningPlayer;
     room.currentRoundCards = [null, null, null, null];
 
-    let firstPlayer = room.seats[0];
-    let firstPlayerHand = firstPlayer ? room.hands[firstPlayer.id] : [];
-    if (firstPlayerHand && firstPlayerHand.length === 0) {
+    // ตรวจสอบว่าไพ่หมดมือทุกฝ่ายหรือยัง
+    let cardsLeft = 0;
+    room.seats.forEach(p => {
+        if (p && room.hands[p.id]) {
+            cardsLeft += room.hands[p.id].length;
+        }
+    });
+
+    if (cardsLeft === 0) {
         room.gameState = 'END';
     }
 
