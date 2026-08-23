@@ -56,7 +56,6 @@ function autoFillAiInRoom(room) {
 }
 
 io.on('connection', (socket) => {
-    // สร้างห้องปกติ
     socket.on('createRoom', (playerName) => {
         const roomId = Math.floor(1000 + Math.random() * 9000).toString();
         const room = {
@@ -86,7 +85,6 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateRoom', room);
     });
 
-    // สร้างห้องสำหรับเล่นคนเดียวกับ AI 3 ตัว
     socket.on('createSinglePlayer', (playerName) => {
         const roomId = Math.floor(1000 + Math.random() * 9000).toString();
         const room = {
@@ -120,7 +118,6 @@ io.on('connection', (socket) => {
         startGame(roomId);
     });
 
-    // เข้าห้อง
     socket.on('joinRoom', ({ roomId, playerName }) => {
         const room = rooms[roomId];
         if (!room) return socket.emit('errorMessage', 'ไม่พบห้องนี้!');
@@ -135,7 +132,6 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateRoom', room);
     });
 
-    // สลับเก้าอี้
     socket.on('changeSeat', ({ roomId, targetSeat }) => {
         const room = rooms[roomId];
         if (!room || room.gameState !== 'LOBBY') return;
@@ -150,7 +146,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // เติม AI ในที่ว่าง
     socket.on('fillAI', ({ roomId }) => {
         const room = rooms[roomId];
         if (!room || room.gameState !== 'LOBBY') return;
@@ -160,7 +155,6 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateRoom', room);
     });
 
-    // กดเริ่มเกม
     socket.on('startGameReq', ({ roomId }) => {
         const room = rooms[roomId];
         if (!room || room.gameState !== 'LOBBY') return;
@@ -354,6 +348,7 @@ function evaluateRound(roomId) {
     for (let i = 0; i < 4; i++) {
         if (i === room.starterPlayer) continue;
         let card = room.currentRoundCards[i];
+        if (!card) continue;
 
         if (card.suit === room.trumpSuit && bestCard.suit !== room.trumpSuit) {
             bestCard = card;
@@ -452,9 +447,11 @@ function checkAiTurn(roomId) {
                 } else {
                     let leadCard = room.currentRoundCards[room.starterPlayer];
                     let sameSuitIndexes = [];
-                    aiHand.forEach((c, idx) => {
-                        if (c.suit === leadCard.suit) sameSuitIndexes.push(idx);
-                    });
+                    if (leadCard) {
+                        aiHand.forEach((c, idx) => {
+                            if (c.suit === leadCard.suit) sameSuitIndexes.push(idx);
+                        });
+                    }
 
                     if (sameSuitIndexes.length > 0) {
                         chosenIndex = sameSuitIndexes[0];
