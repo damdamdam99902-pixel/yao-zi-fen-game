@@ -16,6 +16,14 @@ const CARD_RANKS = {
     '10': 8, 'J': 9, 'Q': 10, 'K': 11, 'A': 12, '2': 13
 };
 
+// ลำดับดอกไพ่: ♠ โพดำ -> ♥️ โพแดง -> ♣ ดอกจิก -> ♦️ ข้าวหลามตัด
+const SUIT_RANKS = {
+    '♠': 1,
+    '♥️': 2,
+    '♣': 3,
+    '♦️': 4
+};
+
 function createDeck() {
     const suits = ['♠', '♥️', '♣', '♦️'];
     const values = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
@@ -28,17 +36,26 @@ function createDeck() {
     return deck.sort(() => Math.random() - 0.5);
 }
 
+// คำนวณแต้มเฉพาะไพ่ 5, 10, A
 function calculateCardScore(card) {
     if (card.value === '5') return 5;
-    if (card.value === '10' || card.value === 'K') return 10;
+    if (card.value === '10' || card.value === 'A') return 10;
     return 0;
+}
+
+// ฟังก์ชันเรียงไพ่ตามดอก (♠ > ♥️ > ♣ > ♦️) แล้วตามด้วยแต้มใหญ่ไปเล็ก
+function sortCards(a, b) {
+    if (SUIT_RANKS[a.suit] !== SUIT_RANKS[b.suit]) {
+        return SUIT_RANKS[a.suit] - SUIT_RANKS[b.suit];
+    }
+    return CARD_RANKS[b.value] - CARD_RANKS[a.value];
 }
 
 function createRoomObject(roomId) {
     return {
         id: roomId,
         seats: [null, null, null, null],
-        gameState: 'LOBBY', // LOBBY, BIDDING, SELECT_TRUMP, KITTY_DISCARD, PLAYING, END
+        gameState: 'LOBBY',
         deck: [],
         hands: {},
         kitty: [],
@@ -145,11 +162,11 @@ io.on('connection', (socket) => {
             room.dealer = room.highestBidder;
             room.gameState = 'SELECT_TRUMP';
             
-            // แจกไพ่หมอน 4 ใบให้ Dealer
+            // แจกไพ่หมอน 4 ใบให้ Dealer แล้วเรียงมือใหม่
             room.hands[room.dealer].push(...room.kitty);
+            room.hands[room.dealer].sort(sortCards);
             room.kitty = [];
 
-            // ส่งมือใหม่ให้ผู้ชนะประมูล
             const dealerSocket = io.sockets.sockets.get(room.seats[room.dealer].id);
             if (dealerSocket) dealerSocket.emit('yourHand', room.hands[room.dealer]);
 
@@ -158,7 +175,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // วนตาประมูลถัดไป
         room.bidTurn = (room.bidTurn + 1) % 4;
         io.to(roomId).emit('updateGameState', room);
         checkAITurn(room);
@@ -177,12 +193,13 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (!room || room.gameState !== 'KITTY_DISCARD') return;
 
-        // นำไพ่ที่เลือกทิ้งลงใต้กอง Kitty
         let dealerHand = room.hands[room.dealer];
         discardIndexes.sort((a, b) => b - a);
         discardIndexes.forEach(idx => {
             room.kitty.push(dealerHand.splice(idx, 1)[0]);
         });
+
+        dealerHand.sort(sortCards);
 
         const dealerSocket = io.sockets.sockets.get(room.seats[room.dealer].id);
         if (dealerSocket) dealerSocket.emit('yourHand', dealerHand);
@@ -200,7 +217,7 @@ io.on('connection', (socket) => {
         let currentTurn = getCurrentTurn(room);
         let playerSocket = room.seats[currentTurn];
 
-        if (playerSocket.id !== socket.id) return; // ไม่ใช่ตาตัวเอง
+        if (playerSocket.id !== socket.id) return;
 
         executePlayCard(room, currentTurn, cardIndex);
     });
@@ -225,7 +242,6 @@ function startNewGame(room) {
     room.roundCount = 0;
     room.currentRoundCards = [null, null, null, null];
 
-    // แจกไพ่คนละ 12 ใบ, หมอน 4 ใบ
     for (let i = 0; i < 4; i++) {
         room.hands[i] = room.deck.splice(0, 12).sort(sortCards);
     }
@@ -253,13 +269,12 @@ function executePlayCard(room, seatIndex, cardIndex) {
     let hand = room.hands[seatIndex];
     let card = hand[cardIndex];
 
-    // ตรวจสอบกฎการลงตามดอก
     let playedCount = room.currentRoundCards.filter(c => c !== null).length;
     if (playedCount > 0) {
         let leadCard = room.currentRoundCards[room.starterPlayer];
         let hasLeadSuit = hand.some(c => c.suit === leadCard.suit);
         if (hasLeadSuit && card.suit !== leadCard.suit) {
-            return; // ต้องลงดอกเดียวกันถ้ามี
+            return;
         }
     }
 
@@ -271,7 +286,6 @@ function executePlayCard(room, seatIndex, cardIndex) {
         io.to(player.id).emit('yourHand', hand);
     }
 
-    // ครบรอบ 4 ใบหรือยัง
     if (room.currentRoundCards.filter(c => c !== null).length === 4) {
         io.to(room.id).emit('updateGameState', room);
         setTimeout(() => resolveRound(room), 1500);
@@ -301,7 +315,6 @@ function resolveRound(room) {
         }
     }
 
-    // คิดคะแนนรวมรอบนี้
     let roundPoints = 0;
     let pointCardsInRound = [];
 
@@ -311,7 +324,6 @@ function resolveRound(room) {
         if (pts > 0) pointCardsInRound.push(c);
     });
 
-    // บันทึกคะแนนและไพ่แต้มเข้าทีมผู้ชนะ
     if (winningSeat === 0 || winningSeat === 2) {
         room.teamAScore += roundPoints;
         room.teamACapturedCards.push(...pointCardsInRound);
@@ -325,12 +337,11 @@ function resolveRound(room) {
     room.roundCount++;
 
     if (room.roundCount >= 12) {
-        // คิดคะแนนใต้มือ Kitty ในรอบสุดท้าย
         let kittyPoints = 0;
         let kittyPointCards = [];
         room.kitty.forEach(c => {
             let pts = calculateCardScore(c);
-            kittyPoints += pts * 2; // คูณสอง
+            kittyPoints += pts * 2;
             if (pts > 0) kittyPointCards.push(c);
         });
 
@@ -384,13 +395,14 @@ function checkAITurn(room) {
                     if (!['A', '10', '5'].includes(c.value)) nonPointIndexes.push(idx);
                 });
                 
-                // สุ่มเลือก 4 ใบที่ไม่มีแต้ม
                 nonPointIndexes.sort(() => Math.random() - 0.5);
                 let toDiscard = nonPointIndexes.slice(0, 4).sort((a, b) => b - a);
 
                 toDiscard.forEach(idx => {
                     room.kitty.push(hand.splice(idx, 1)[0]);
                 });
+
+                hand.sort(sortCards);
 
                 room.gameState = 'PLAYING';
                 room.starterPlayer = room.dealer;
@@ -441,6 +453,7 @@ function socketEmitBid(room, bidValue, isPass) {
         room.dealer = room.highestBidder;
         room.gameState = 'SELECT_TRUMP';
         room.hands[room.dealer].push(...room.kitty);
+        room.hands[room.dealer].sort(sortCards);
         room.kitty = [];
         io.to(room.id).emit('updateGameState', room);
         checkAITurn(room);
@@ -450,13 +463,6 @@ function socketEmitBid(room, bidValue, isPass) {
     room.bidTurn = (room.bidTurn + 1) % 4;
     io.to(room.id).emit('updateGameState', room);
     checkAITurn(room);
-}
-
-function sortCards(a, b) {
-    if (CARD_RANKS[a.value] !== CARD_RANKS[b.value]) {
-        return CARD_RANKS[b.value] - CARD_RANKS[a.value];
-    }
-    return a.suit.localeCompare(b.suit);
 }
 
 const PORT = process.env.PORT || 3000;
