@@ -15,7 +15,7 @@
 
     <!-- ล็อบบี้สร้าง/เข้าห้อง -->
     <div id="lobby" class="flex flex-col items-center justify-center h-screen bg-green-950 p-4">
-        <h1 class="text-3xl font-bold mb-6 text-yellow-400">♣️ 1000แต้ม ♠️</h1>
+        <h1 class="text-3xl font-bold mb-6 text-yellow-400">♣️ 100แต้ม ♠️</h1>
         <div class="bg-green-800 p-6 rounded-lg shadow-xl w-80 text-center border border-green-600">
             <input type="text" id="playerName" placeholder="ใส่ชื่อของคุณ" class="w-full p-2 mb-4 text-black bg-white rounded font-bold text-center">
             
@@ -168,17 +168,14 @@
         }
 
         function selectSeat(seatNumber) {
-            if (!myRoomId) return;
             socket.emit('changeSeat', { roomId: myRoomId, targetSeat: seatNumber });
         }
 
         function fillAI() {
-            if (!myRoomId) return alert('ไม่พบรหัสห้อง');
             socket.emit('fillAI', { roomId: myRoomId });
         }
 
         function startGame() {
-            if (!myRoomId) return alert('ไม่พบรหัสห้อง');
             socket.emit('startGameReq', { roomId: myRoomId });
         }
 
@@ -232,13 +229,23 @@
             }
 
             if (room.gameState !== 'LOBBY') {
+                document.getElementById('lobby').classList.add('hidden');
                 document.getElementById('room-lobby').classList.add('hidden');
+                document.getElementById('room-lobby').classList.remove('flex');
                 document.getElementById('game-board').classList.remove('hidden');
             }
         });
 
         socket.on('updateGameState', (room) => {
             currentRoomState = room;
+
+            if (room.gameState !== 'LOBBY') {
+                document.getElementById('lobby').classList.add('hidden');
+                document.getElementById('room-lobby').classList.add('hidden');
+                document.getElementById('room-lobby').classList.remove('flex');
+                document.getElementById('game-board').classList.remove('hidden');
+            }
+
             document.getElementById('teamA-score').innerText = room.teamAScore;
             document.getElementById('teamB-score').innerText = room.teamBScore;
             document.getElementById('bid-score-display').innerText = room.highestBid;
@@ -275,20 +282,20 @@
             let mySeatIndex = myCurrentPlayer ? myCurrentPlayer.seat : -1;
 
             if (room.gameState === 'BIDDING') {
-                document.getElementById('game-status').innerText = `ถึงตา P${room.bidTurn} (${room.seats[room.bidTurn] ? room.seats[room.bidTurn].name : ''}) เลือกคะแนนประมูล`;
+                document.getElementById('game-status').innerText = `ถึงตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกคะแนนประมูล`;
                 if (mySeatIndex === room.bidTurn) {
                     controls.classList.remove('hidden');
                     bidControls.classList.remove('hidden');
                     renderBidButtons(room.highestBid);
                 }
             } else if (room.gameState === 'SELECT_TRUMP') {
-                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer] ? room.seats[room.dealer].name : ''}) ชนะประมูล! กำลังเลือกดอกไพ่หลัก...`;
+                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกไพ่หลัก...`;
                 if (mySeatIndex === room.dealer) {
                     controls.classList.remove('hidden');
                     trumpControls.classList.remove('hidden');
                 }
             } else if (room.gameState === 'KITTY_DISCARD') {
-                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer] ? room.seats[room.dealer].name : ''}) กำลังเลือกไพ่ทิ้งลงใต้กอง 4 ใบ...`;
+                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer].name}) กำลังเลือกไพ่ทิ้งลงใต้กอง 4 ใบ...`;
                 if (mySeatIndex === room.dealer) {
                     controls.classList.remove('hidden');
                     kittyControls.classList.remove('hidden');
@@ -300,10 +307,10 @@
                 let leadSuitInfo = "";
                 if (playedCount > 0) {
                     let leadCard = room.currentRoundCards[room.starterPlayer];
-                    if (leadCard) leadSuitInfo = ` | ดอกที่ต้องออก: ${leadCard.suit}`;
+                    leadSuitInfo = ` | ดอกที่ต้องออก: ${leadCard.suit}`;
                 }
 
-                document.getElementById('game-status').innerText = `ตาผู้เล่น P${currentTurn} (${room.seats[currentTurn] ? room.seats[currentTurn].name : ''}) ลงไพ่ (ดอกหลัก: ${room.trumpSuit})${leadSuitInfo}`;
+                document.getElementById('game-status').innerText = `ตาผู้เล่น P${currentTurn} (${room.seats[currentTurn].name}) ลงไพ่ (ดอกหลัก: ${room.trumpSuit})${leadSuitInfo}`;
             }
         });
 
