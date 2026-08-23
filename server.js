@@ -255,4 +255,5 @@ function evaluateRound(roomId) {
     io.to(roomId).emit('updateGameState', room);
 }
 
-server.listen(3000, () => console.log('Yao Zi Fen Server Running on port 3000'));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log('Yao Zi Fen Server Running on port ' + PORT));
