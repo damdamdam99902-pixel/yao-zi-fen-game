@@ -12,7 +12,6 @@
             user-select: none;
             -webkit-user-select: none;
         }
-        /* จัดการไพ่ให้ซ้อนทับกันแบบสไลด์ในมือถือ */
         .hand-container {
             display: flex;
             justify-content: center;
@@ -108,10 +107,9 @@
             </div>
         </header>
 
-        <!-- Main Card Playing Field (Cross Grid Layout Relative to Player) -->
+        <!-- Main Card Playing Field -->
         <main class="flex-1 relative flex items-center justify-center p-2">
-            
-            <!-- Top Player (Partner / Opposite) -->
+            <!-- Top Player -->
             <div class="absolute top-2 flex flex-col items-center">
                 <span id="pos-top-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
                 <div id="played-pos-top" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
@@ -129,15 +127,14 @@
                 <div id="played-pos-right" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
 
-            <!-- Bottom Player (Your Perspective) -->
+            <!-- Bottom Player -->
             <div class="absolute bottom-2 flex flex-col items-center">
                 <div id="played-pos-bottom" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold mb-1"></div>
                 <span id="pos-bottom-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[90px] truncate">คุณ</span>
             </div>
-
         </main>
 
-        <!-- Dynamic Controls Floating Panel -->
+        <!-- Controls Floating Panel -->
         <section id="controls" class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-green-900/95 p-4 rounded-2xl text-center hidden z-30 shadow-2xl border-2 border-yellow-500/80 backdrop-blur-md">
             <div id="bid-controls" class="hidden">
                 <p class="mb-2 font-bold text-sm text-yellow-300">เลือกคะแนนประมูล:</p>
@@ -263,7 +260,6 @@
         socket.on('updateRoom', (room) => {
             currentRoomState = room;
             
-            // อัปเดตที่นั่งที่แสดงใน Room Lobby
             for (let i = 0; i < 4; i++) {
                 const seatEl = document.getElementById(`seat-${i}`);
                 const player = room.seats[i];
@@ -287,7 +283,6 @@
         socket.on('updateGameState', (room) => {
             currentRoomState = room;
 
-            // ค้นหาเก้าอี้ปัจจุบันของผู้เล่น
             let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
             if (myCurrentPlayer) {
                 mySeat = myCurrentPlayer.seat;
@@ -305,7 +300,6 @@
             document.getElementById('bid-score-display').innerText = room.highestBid;
             document.getElementById('trump-suit-display').innerText = room.trumpSuit || '-';
 
-            // --- คำนวณมุมมองการหมุนโต๊ะ (Perspective Rotation) ---
             const baseSeat = mySeat >= 0 ? mySeat : 0;
             const positions = [
                 { seat: baseSeat, pos: 'bottom' },
@@ -318,7 +312,6 @@
                 const player = room.seats[seat];
                 const card = room.currentRoundCards[seat];
                 
-                // อัปเดตชื่อผู้เล่นตามตำแหน่งมุมมอง
                 const nameEl = document.getElementById(`pos-${pos}-name`);
                 if (player) {
                     nameEl.innerText = (pos === 'bottom') ? `คุณ (${player.name})` : player.name;
@@ -326,7 +319,6 @@
                     nameEl.innerText = 'รอ...';
                 }
 
-                // อัปเดตไพ่ที่ทิ้งลงกลางโต๊ะตามตำแหน่งมุมมอง
                 const cardEl = document.getElementById(`played-pos-${pos}`);
                 if (card) {
                     const isRed = card.suit === '♥️' || card.suit === '♦️';
@@ -338,7 +330,6 @@
                 }
             });
 
-            // จัดการพาเนลการควบคุมตามสถานะเกม
             const controls = document.getElementById('controls');
             const bidControls = document.getElementById('bid-controls');
             const kittyControls = document.getElementById('kitty-controls');
@@ -440,15 +431,18 @@
             }
         }
 
+        // แสดงตัวเลือกคะแนนประมูลตั้งแต่ minBid ไปจนถึง 100
         function renderBidButtons(currentHighest) {
             const container = document.getElementById('bid-buttons-container');
             container.innerHTML = '';
-            let nextBid = currentHighest === 60 ? 65 : currentHighest + 5;
-            if (nextBid <= 100) {
+
+            let minBid = currentHighest === 60 ? 65 : currentHighest + 5;
+
+            for (let bid = minBid; bid <= 100; bid += 5) {
                 const btn = document.createElement('button');
-                btn.className = "bg-blue-600 active:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-xl text-xs shadow";
-                btn.innerText = `เรียก ${nextBid} แต้ม`;
-                btn.onclick = () => sendBid(nextBid, false);
+                btn.className = "bg-blue-600 active:bg-blue-700 text-white font-bold py-1.5 px-3 rounded-xl text-xs shadow hover:bg-blue-500 transition";
+                btn.innerText = `${bid}`;
+                btn.onclick = () => sendBid(bid, false);
                 container.appendChild(btn);
             }
         }
