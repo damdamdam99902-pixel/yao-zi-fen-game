@@ -43,13 +43,14 @@ function sortHand(hand) {
 function autoFillAiInRoom(room) {
     let aiCount = 1;
     for (let i = 0; i < 4; i++) {
-        if (room.seats[i] === null) {
+        if (!room.seats[i]) {
             room.seats[i] = {
-                id: `ai_${i}_${Date.now()}`,
-                name: `BOT สมชาย ${aiCount++}`,
+                id: 'ai_' + i + '_' + Date.now(),
+                name: 'BOT สมชาย ' + aiCount,
                 seat: i,
                 isAi: true
             };
+            aiCount++;
         }
     }
 }
@@ -58,7 +59,7 @@ io.on('connection', (socket) => {
     // สร้างห้องปกติ
     socket.on('createRoom', (playerName) => {
         const roomId = Math.floor(1000 + Math.random() * 9000).toString();
-        rooms[roomId] = {
+        const room = {
             id: roomId,
             hostId: socket.id,
             seats: [null, null, null, null],
@@ -76,17 +77,19 @@ io.on('connection', (socket) => {
             currentRoundCards: [null, null, null, null],
             starterPlayer: 0
         };
+        
+        room.seats[0] = { id: socket.id, name: playerName, seat: 0, isAi: false };
+        rooms[roomId] = room;
 
-        rooms[roomId].seats[0] = { id: socket.id, name: playerName, seat: 0, isAi: false };
         socket.join(roomId);
         socket.emit('roomCreated', { roomId, seat: 0 });
-        io.to(roomId).emit('updateRoom', rooms[roomId]);
+        io.to(roomId).emit('updateRoom', room);
     });
 
     // สร้างห้องสำหรับเล่นคนเดียวกับ AI 3 ตัว
     socket.on('createSinglePlayer', (playerName) => {
         const roomId = Math.floor(1000 + Math.random() * 9000).toString();
-        rooms[roomId] = {
+        const room = {
             id: roomId,
             hostId: socket.id,
             seats: [null, null, null, null],
@@ -105,14 +108,15 @@ io.on('connection', (socket) => {
             starterPlayer: 0
         };
 
-        rooms[roomId].seats[0] = { id: socket.id, name: playerName, seat: 0, isAi: false };
-        autoFillAiInRoom(rooms[roomId]);
+        room.seats[0] = { id: socket.id, name: playerName, seat: 0, isAi: false };
+        rooms[roomId] = room;
+        
+        autoFillAiInRoom(room);
         
         socket.join(roomId);
         socket.emit('roomCreated', { roomId, seat: 0 });
-        io.to(roomId).emit('updateRoom', rooms[roomId]);
+        io.to(roomId).emit('updateRoom', room);
 
-        // เริ่มเกมอัตโนมัติทันที
         startGame(roomId);
     });
 
@@ -156,12 +160,11 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateRoom', room);
     });
 
-    // เริ่มเกม (ถ้าที่ว่างอยู่จะเติม AI ให้อัตโนมัติ)
+    // กดเริ่มเกม
     socket.on('startGameReq', ({ roomId }) => {
         const room = rooms[roomId];
         if (!room || room.gameState !== 'LOBBY') return;
 
-        // ถ้ายังมีช่องว่าง เติม AI ให้อัตโนมัติจนครบ 4
         autoFillAiInRoom(room);
         io.to(roomId).emit('updateRoom', room);
 
@@ -187,14 +190,18 @@ io.on('connection', (socket) => {
 
 function startGame(roomId) {
     const room = rooms[roomId];
+    if (!room) return;
+
     room.gameState = 'BIDDING';
     room.deck = createDeck();
     
     room.seats.forEach(p => {
-        let hand = room.deck.splice(0, 12);
-        room.hands[p.id] = sortHand(hand);
-        if (!p.isAi) {
-            io.to(p.id).emit('yourHand', room.hands[p.id]);
+        if (p) {
+            let hand = room.deck.splice(0, 12);
+            room.hands[p.id] = sortHand(hand);
+            if (!p.isAi) {
+                io.to(p.id).emit('yourHand', room.hands[p.id]);
+            }
         }
     });
 
@@ -209,7 +216,7 @@ function handleBid(roomId, playerSocketId, bidValue, isPass) {
     if (!room || room.gameState !== 'BIDDING') return;
 
     let currentTurnPlayer = room.seats[room.bidTurn];
-    if (currentTurnPlayer.id !== playerSocketId) return;
+    if (!currentTurnPlayer || currentTurnPlayer.id !== playerSocketId) return;
 
     if (isPass) {
         room.playerPassed[room.bidTurn] = true;
@@ -238,8 +245,9 @@ function handleBid(roomId, playerSocketId, bidValue, isPass) {
     checkAiTurn(roomId);
 }
 
-function endBidding(roomId, winnerSeat, forceScore = null) {
+function endBidding(roomId, winnerSeat, forceScore) {
     const room = rooms[roomId];
+    if (!room) return;
     if (forceScore) room.highestBid = forceScore;
     room.dealer = winnerSeat;
     room.gameState = 'SELECT_TRUMP';
@@ -253,7 +261,7 @@ function handleTrumpSelection(roomId, playerSocketId, suit) {
     if (!room || room.gameState !== 'SELECT_TRUMP') return;
 
     let dealerPlayer = room.seats[room.dealer];
-    if (dealerPlayer.id !== playerSocketId) return;
+    if (!dealerPlayer || dealerPlayer.id !== playerSocketId) return;
 
     room.trumpSuit = suit;
     room.hands[dealerPlayer.id] = [...room.hands[dealerPlayer.id], ...room.kitty];
@@ -275,7 +283,7 @@ function handleDiscard(roomId, playerSocketId, discardIndexes) {
     if (!room || room.gameState !== 'KITTY_DISCARD') return;
 
     let dealerPlayer = room.seats[room.dealer];
-    if (dealerPlayer.id !== playerSocketId || discardIndexes.length !== 4) return;
+    if (!dealerPlayer || dealerPlayer.id !== playerSocketId || discardIndexes.length !== 4) return;
 
     discardIndexes.sort((a, b) => b - a);
     discardIndexes.forEach(idx => {
@@ -313,7 +321,7 @@ function handlePlayCard(roomId, playerSocketId, cardIndex) {
 
         if (hasLeadSuit && chosenCard.suit !== leadCard.suit) {
             if (!room.seats[currentSeat].isAi) {
-                io.to(playerSocketId).emit('errorMessage', `คุณต้องออกไพ่ดอก ${leadCard.suit} ตามคนแรกก่อนครับ!`);
+                io.to(playerSocketId).emit('errorMessage', 'คุณต้องออกไพ่ดอก ' + leadCard.suit + ' ตามคนแรกก่อนครับ!');
             }
             return;
         }
@@ -337,6 +345,8 @@ function handlePlayCard(roomId, playerSocketId, cardIndex) {
 
 function evaluateRound(roomId) {
     const room = rooms[roomId];
+    if (!room) return;
+
     let leadCard = room.currentRoundCards[room.starterPlayer];
     let winningPlayer = room.starterPlayer;
     let bestCard = leadCard;
@@ -361,7 +371,7 @@ function evaluateRound(roomId) {
         }
     }
 
-    let roundPoints = room.currentRoundCards.reduce((sum, c) => sum + c.points, 0);
+    let roundPoints = room.currentRoundCards.reduce((sum, c) => sum + (c ? c.points : 0), 0);
     if (winningPlayer === 0 || winningPlayer === 2) {
         room.teamAScore += roundPoints;
     } else {
@@ -371,8 +381,9 @@ function evaluateRound(roomId) {
     room.starterPlayer = winningPlayer;
     room.currentRoundCards = [null, null, null, null];
 
-    let firstPlayerHand = room.hands[room.seats[0].id];
-    if (firstPlayerHand.length === 0) {
+    let firstPlayer = room.seats[0];
+    let firstPlayerHand = firstPlayer ? room.hands[firstPlayer.id] : [];
+    if (firstPlayerHand && firstPlayerHand.length === 0) {
         room.gameState = 'END';
     }
 
@@ -391,7 +402,7 @@ function checkAiTurn(roomId) {
         if (room.gameState === 'BIDDING') {
             let p = room.seats[room.bidTurn];
             if (p && p.isAi) {
-                let aiHand = room.hands[p.id];
+                let aiHand = room.hands[p.id] || [];
                 let highCards = aiHand.filter(c => VALUE_RANK[c.value] >= 12).length;
                 let nextBid = room.highestBid === 60 ? 65 : room.highestBid + 5;
 
@@ -404,7 +415,7 @@ function checkAiTurn(roomId) {
         } else if (room.gameState === 'SELECT_TRUMP') {
             let p = room.seats[room.dealer];
             if (p && p.isAi) {
-                let aiHand = room.hands[p.id];
+                let aiHand = room.hands[p.id] || [];
                 let suitCounts = {};
                 SUITS.forEach(s => suitCounts[s] = 0);
                 aiHand.forEach(c => suitCounts[c.suit]++);
@@ -415,7 +426,7 @@ function checkAiTurn(roomId) {
         } else if (room.gameState === 'KITTY_DISCARD') {
             let p = room.seats[room.dealer];
             if (p && p.isAi) {
-                let aiHand = room.hands[p.id];
+                let aiHand = room.hands[p.id] || [];
                 let validDiscardIndexes = [];
                 aiHand.forEach((c, idx) => {
                     if (!['A', '10', '5'].includes(c.value)) {
@@ -433,7 +444,7 @@ function checkAiTurn(roomId) {
             let p = room.seats[currentTurn];
 
             if (p && p.isAi && room.currentRoundCards[currentTurn] === null) {
-                let aiHand = room.hands[p.id];
+                let aiHand = room.hands[p.id] || [];
                 let chosenIndex = 0;
 
                 if (playedCount === 0) {
