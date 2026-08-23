@@ -20,7 +20,6 @@
             padding: 12px 20px;
             scroll-behavior: smooth;
         }
-        /* ไพ่ในมือขนาดใหญ่ขึ้น และเห็นดอกชัดขึ้น */
         .card-item {
             flex: 0 0 auto;
             width: 52px;
@@ -44,12 +43,30 @@
             border: 2.5px solid #ef4444 !important;
             box-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
         }
-        /* สีดอกไพ่แบบเน้นความชัดเจน */
         .suit-red {
-            color: #dc2626; /* แดงเข้มคมชัด */
+            color: #dc2626;
         }
         .suit-black {
-            color: #0f172a; /* ดำสนิท */
+            color: #0f172a;
+        }
+        .point-card-mini {
+            width: 20px;
+            height: 28px;
+            font-size: 9px;
+            border-radius: 3px;
+            margin-left: -10px;
+            box-shadow: -1px 1px 3px rgba(0,0,0,0.5);
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .point-card-mini:first-child {
+            margin-left: 0;
         }
     </style>
 </head>
@@ -58,7 +75,7 @@
     <!-- ล็อบบี้สร้าง/เข้าห้อง -->
     <div id="lobby" class="flex-1 flex flex-col items-center justify-center p-4">
         <div class="text-center mb-6">
-            <h1 class="text-3xl font-extrabold text-yellow-400 drop-shadow-md">♠️ 100แต้ม ซอย 9 ♣️</h1>
+            <h1 class="text-3xl font-extrabold text-yellow-400 drop-shadow-md">♠️ Yao Zi Fen ♣️</h1>
             <p class="text-xs text-green-300 mt-1">เกมไพ่ประมูลแต้มออนไลน์ (100 แต้ม)</p>
         </div>
         <div class="bg-green-900/90 p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center border border-green-700 backdrop-blur-sm">
@@ -87,14 +104,12 @@
             <p class="text-xs text-gray-300 mb-3">แตะเลือกที่นั่ง (ทีม A: 0+2 | ทีม B: 1+3)</p>
 
             <div class="grid grid-cols-2 gap-3 mb-5">
-                <!-- ทีม A -->
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-yellow-500/50">
                     <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A</h3>
                     <div id="seat-0" onclick="selectSeat(0)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 0: ว่าง</div>
                     <div id="seat-2" onclick="selectSeat(2)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 2: ว่าง</div>
                 </div>
 
-                <!-- ทีม B -->
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-blue-500/50">
                     <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B</h3>
                     <div id="seat-1" onclick="selectSeat(1)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 1: ว่าง</div>
@@ -113,13 +128,28 @@
     <div id="game-board" class="flex-1 flex flex-col justify-between h-full hidden relative overflow-hidden">
         
         <!-- Header Top Bar -->
-        <header class="bg-green-900/90 p-2 border-b border-green-700 text-center shadow-md z-10">
-            <div class="flex justify-between items-center px-2 text-xs mb-1">
-                <div class="font-semibold text-yellow-300">ทีม A: <span id="teamA-score" class="text-white font-bold">0</span></div>
-                <div class="text-center font-bold text-yellow-400 text-sm">ประมูล: <span id="bid-score-display">-</span> (ไพ่หลัก: <span id="trump-suit-display" class="text-lg font-bold">-</span>)</div>
-                <div class="font-semibold text-blue-300">ทีม B: <span id="teamB-score" class="text-white font-bold">0</span></div>
+        <header class="bg-green-900/95 p-2 border-b border-green-700 shadow-md z-10">
+            <div class="flex justify-between items-center text-xs mb-1.5 px-1">
+                <div class="font-bold text-yellow-300">ทีม A: <span id="teamA-score" class="text-white text-sm">0</span></div>
+                <div class="text-center font-bold text-yellow-400 text-xs bg-black/40 px-3 py-1 rounded-full border border-yellow-500/40">
+                    ประมูล: <span id="bid-score-display">-</span> | ดอกหลัก: <span id="trump-suit-display" class="text-base font-bold">-</span>
+                </div>
+                <div class="font-bold text-blue-300">ทีม B: <span id="teamB-score" class="text-white text-sm">0</span></div>
             </div>
-            <div id="game-status" class="text-xs font-semibold text-yellow-200 bg-green-950 px-2 py-1 rounded-lg border border-green-800 truncate">
+
+            <!-- ช่องเก็บไพ่คะแนนสะสม -->
+            <div class="grid grid-cols-2 gap-2 bg-green-950/80 p-1.5 rounded-xl border border-green-800">
+                <div class="flex items-center gap-1 overflow-x-auto min-h-[30px] px-1 border-r border-green-800">
+                    <span class="text-[9px] text-yellow-400 font-bold shrink-0">ไพ่ A:</span>
+                    <div id="teamA-captured-cards" class="flex items-center overflow-x-auto pl-2 py-0.5"></div>
+                </div>
+                <div class="flex items-center gap-1 overflow-x-auto min-h-[30px] px-1">
+                    <span class="text-[9px] text-blue-400 font-bold shrink-0">ไพ่ B:</span>
+                    <div id="teamB-captured-cards" class="flex items-center overflow-x-auto pl-2 py-0.5"></div>
+                </div>
+            </div>
+
+            <div id="game-status" class="text-[11px] font-semibold text-yellow-200 bg-green-950 px-2 py-0.5 rounded-lg border border-green-800 truncate text-center mt-1">
                 กำลังเตรียมความพร้อม...
             </div>
         </header>
@@ -317,6 +347,9 @@
             document.getElementById('bid-score-display').innerText = room.highestBid;
             document.getElementById('trump-suit-display').innerText = room.trumpSuit || '-';
 
+            renderCapturedCards('teamA-captured-cards', room.teamACapturedCards || []);
+            renderCapturedCards('teamB-captured-cards', room.teamBCapturedCards || []);
+
             const baseSeat = mySeat >= 0 ? mySeat : 0;
             const positions = [
                 { seat: baseSeat, pos: 'bottom' },
@@ -413,7 +446,26 @@
             }
         });
 
-        // ฟังก์ชันวาดไพ่ในมือแบบใหม่ ดอกชัดเจน มีสัญลักษณ์ใหญ่ตรงกลาง
+        function renderCapturedCards(elementId, cards) {
+            const container = document.getElementById(elementId);
+            container.innerHTML = '';
+            if (cards.length === 0) {
+                container.innerHTML = '<span class="text-[9px] text-gray-500 italic">ยังไม่มี</span>';
+                return;
+            }
+            cards.forEach(card => {
+                const isRed = card.suit === '♥️' || card.suit === '♦️';
+                const suitClass = isRed ? 'suit-red' : 'suit-black';
+                const cardEl = document.createElement('div');
+                cardEl.className = 'point-card-mini border border-gray-400';
+                cardEl.innerHTML = `
+                    <span class="${suitClass}">${card.value}</span>
+                    <span class="${suitClass} text-[7px]">${card.suit}</span>
+                `;
+                container.appendChild(cardEl);
+            });
+        }
+
         function renderHand() {
             const handDiv = document.getElementById('player-hand');
             handDiv.innerHTML = '';
