@@ -18,7 +18,10 @@
         <h1 class="text-3xl font-bold mb-6 text-yellow-400">♣️ 幺子分 Online + AI ♠️</h1>
         <div class="bg-green-800 p-6 rounded-lg shadow-xl w-80 text-center border border-green-600">
             <input type="text" id="playerName" placeholder="ใส่ชื่อของคุณ" class="w-full p-2 mb-4 text-black bg-white rounded font-bold text-center">
-            <button onclick="createRoom()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 rounded mb-3 cursor-pointer">สร้างห้องใหม่</button>
+            
+            <button onclick="createSinglePlayer()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded mb-3 cursor-pointer">🤖 เล่นคนเดียวกับ AI</button>
+            <button onclick="createRoom()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 rounded mb-3 cursor-pointer">👥 สร้างห้องเล่นกับเพื่อน</button>
+            
             <hr class="my-3 border-green-600">
             <input type="text" id="roomIdInput" placeholder="รหัสห้อง 4 หลัก" class="w-full p-2 mb-2 text-black bg-white rounded font-bold text-center">
             <button onclick="joinRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded cursor-pointer">เข้าห้องเพื่อน</button>
@@ -152,6 +155,11 @@
             socket.emit('createRoom', name);
         }
 
+        function createSinglePlayer() {
+            const name = document.getElementById('playerName').value || "คุณ";
+            socket.emit('createSinglePlayer', name);
+        }
+
         function joinRoom() {
             const name = document.getElementById('playerName').value;
             const roomId = document.getElementById('roomIdInput').value;
@@ -208,7 +216,6 @@
         socket.on('updateRoom', (room) => {
             currentRoomState = room;
             
-            // อัปเดตเก้าอี้ใน Lobby
             for (let i = 0; i < 4; i++) {
                 const seatEl = document.getElementById(`seat-${i}`);
                 const player = room.seats[i];
@@ -221,7 +228,6 @@
                 }
             }
 
-            // ถ้าเกมเริ่มแล้ว ให้สลับหน้าจอไปที่กระดานเกม
             if (room.gameState !== 'LOBBY') {
                 document.getElementById('room-lobby').classList.add('hidden');
                 document.getElementById('game-board').classList.remove('hidden');
@@ -262,7 +268,6 @@
             kittyControls.classList.add('hidden');
             trumpControls.classList.add('hidden');
 
-            // เช็กหาคนที่ต้องเล่นปัจจุบัน
             let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
             let mySeatIndex = myCurrentPlayer ? myCurrentPlayer.seat : -1;
 
