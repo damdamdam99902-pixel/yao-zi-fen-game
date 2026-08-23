@@ -2,142 +2,177 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>เกมไพ่ 幺子分 (Yao Zi Fen) - Online & AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>เกมไพ่ 幺子分 (Yao Zi Fen)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
-        .card { transition: transform 0.2s; }
-        .card:hover { transform: translateY(-10px); }
-        .selected-card { transform: translateY(-15px) !important; border-color: #ef4444 !important; box-shadow: 0 0 10px #ef4444; }
+        body {
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* จัดการไพ่ให้ซ้อนทับกันแบบสไลด์ในมือถือ */
+        .hand-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            overflow-x: auto;
+            padding: 10px 20px;
+            scroll-behavior: smooth;
+        }
+        .card-item {
+            flex: 0 0 auto;
+            margin-left: -22px;
+            transition: transform 0.15s ease, margin 0.15s ease;
+            box-shadow: -2px 0 6px rgba(0,0,0,0.3);
+        }
+        .card-item:first-child {
+            margin-left: 0;
+        }
+        .card-item.selected-card {
+            transform: translateY(-18px) !important;
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 12px #ef4444;
+        }
     </style>
 </head>
-<body class="bg-green-900 text-white min-h-screen font-sans">
+<body class="bg-green-950 text-white h-screen flex flex-col font-sans overflow-hidden">
 
     <!-- ล็อบบี้สร้าง/เข้าห้อง -->
-    <div id="lobby" class="flex flex-col items-center justify-center h-screen bg-green-950 p-4">
-        <h1 class="text-3xl font-bold mb-6 text-yellow-400">♣️ มาๆทั้งวัน ควย ไม่มีใครเข้าเกมเลย ♠️</h1>
-        <div class="bg-green-800 p-6 rounded-lg shadow-xl w-80 text-center border border-green-600">
-            <input type="text" id="playerName" placeholder="ใส่ชื่อของคุณ" class="w-full p-2 mb-4 text-black bg-white rounded font-bold text-center">
+    <div id="lobby" class="flex-1 flex flex-col items-center justify-center p-4">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold text-yellow-400 drop-shadow-md">♠️ Yao Zi Fen ♣️</h1>
+            <p class="text-xs text-green-300 mt-1">เกมไพ่ประมูลแต้มออนไลน์ (100 แต้ม)</p>
+        </div>
+        <div class="bg-green-900/90 p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center border border-green-700 backdrop-blur-sm">
+            <input type="text" id="playerName" placeholder="กรอกชื่อของคุณ" class="w-full p-3 mb-4 text-black bg-white rounded-xl font-bold text-center outline-none border-2 border-yellow-500 focus:ring-2 focus:ring-yellow-400">
             
-            <button onclick="createSinglePlayer()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded mb-3 cursor-pointer">🤖 เล่นคนเดียวกับ AI</button>
-            <button onclick="createRoom()" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-2 rounded mb-3 cursor-pointer">👥 สร้างห้องเล่นกับเพื่อน</button>
+            <button onclick="createSinglePlayer()" class="w-full bg-purple-600 active:bg-purple-700 text-white font-bold py-3 rounded-xl mb-3 shadow-md transition">🤖 เล่นกับ บอท AI</button>
+            <button onclick="createRoom()" class="w-full bg-yellow-500 active:bg-yellow-600 text-black font-bold py-3 rounded-xl mb-3 shadow-md transition">👥 สร้างห้องเล่นกับเพื่อน</button>
             
-            <hr class="my-3 border-green-600">
-            <input type="text" id="roomIdInput" placeholder="รหัสห้อง 4 หลัก" class="w-full p-2 mb-2 text-black bg-white rounded font-bold text-center">
-            <button onclick="joinRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded cursor-pointer">เข้าห้องเพื่อน</button>
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-green-700"></div>
+                <span class="flex-shrink mx-2 text-xs text-green-400">หรือเข้าร่วม</span>
+                <div class="flex-grow border-t border-green-700"></div>
+            </div>
+
+            <input type="text" id="roomIdInput" placeholder="รหัสห้อง 4 หลัก" class="w-full p-3 mb-3 text-black bg-white rounded-xl font-bold text-center outline-none">
+            <button onclick="joinRoom()" class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition">เข้าห้องเพื่อน</button>
         </div>
     </div>
 
     <!-- หน้าเลือกที่นั่ง & เตรียมตัว (Room Lobby) -->
-    <div id="room-lobby" class="container mx-auto p-4 max-w-xl hidden flex-col items-center justify-center min-h-screen">
-        <div class="bg-green-800 p-6 rounded-xl border border-green-600 w-full text-center shadow-2xl">
-            <h2 class="text-2xl font-bold mb-2 text-yellow-300">ห้องเตรียมตัวเล่นเกม - รหัส: <span id="room-code-display" class="text-white"></span></h2>
-            <button onclick="copyRoomLink()" class="mb-4 bg-yellow-500 hover:bg-yellow-400 text-black text-xs px-3 py-1 rounded-full font-bold cursor-pointer">📋 ก๊อปปี้ลิงก์ชวนเพื่อน</button>
+    <div id="room-lobby" class="flex-1 p-4 max-w-md mx-auto hidden flex-col justify-center items-center w-full">
+        <div class="bg-green-900/90 p-5 rounded-2xl border border-green-700 w-full text-center shadow-2xl">
+            <h2 class="text-xl font-bold mb-1 text-yellow-300">ห้องพักรอ - รหัส: <span id="room-code-display" class="text-white underline"></span></h2>
+            <button onclick="copyRoomLink()" class="mb-4 bg-yellow-500 active:bg-yellow-400 text-black text-xs px-3 py-1.5 rounded-full font-bold shadow">📋 ก๊อปปี้ลิงก์ชวนเพื่อน</button>
 
-            <p class="text-sm text-gray-300 mb-4">คลิกเลือกที่นั่งที่คุณต้องการ (ทีม A: เก้าอี้ 0+2 | ทีม B: เก้าอี้ 1+3)</p>
+            <p class="text-xs text-gray-300 mb-3">แตะเลือกที่นั่ง (ทีม A: 0+2 | ทีม B: 1+3)</p>
 
-            <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="grid grid-cols-2 gap-3 mb-5">
                 <!-- ทีม A -->
-                <div class="bg-green-900 p-3 rounded-lg border border-yellow-500">
-                    <h3 class="font-bold text-yellow-400 mb-2">ทีม A</h3>
-                    <div id="seat-0" onclick="selectSeat(0)" class="p-3 bg-green-800 rounded border mb-2 cursor-pointer hover:bg-green-700">เก้าอี้ 0: ว่าง</div>
-                    <div id="seat-2" onclick="selectSeat(2)" class="p-3 bg-green-800 rounded border cursor-pointer hover:bg-green-700">เก้าอี้ 2: ว่าง</div>
+                <div class="bg-green-950/80 p-2.5 rounded-xl border border-yellow-500/50">
+                    <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A</h3>
+                    <div id="seat-0" onclick="selectSeat(0)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 0: ว่าง</div>
+                    <div id="seat-2" onclick="selectSeat(2)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 2: ว่าง</div>
                 </div>
 
                 <!-- ทีม B -->
-                <div class="bg-green-900 p-3 rounded-lg border border-blue-500">
-                    <h3 class="font-bold text-blue-400 mb-2">ทีม B</h3>
-                    <div id="seat-1" onclick="selectSeat(1)" class="p-3 bg-green-800 rounded border mb-2 cursor-pointer hover:bg-green-700">เก้าอี้ 1: ว่าง</div>
-                    <div id="seat-3" onclick="selectSeat(3)" class="p-3 bg-green-800 rounded border cursor-pointer hover:bg-green-700">เก้าอี้ 3: ว่าง</div>
+                <div class="bg-green-950/80 p-2.5 rounded-xl border border-blue-500/50">
+                    <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B</h3>
+                    <div id="seat-1" onclick="selectSeat(1)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 1: ว่าง</div>
+                    <div id="seat-3" onclick="selectSeat(3)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 3: ว่าง</div>
                 </div>
             </div>
 
             <div class="flex gap-2">
-                <button id="fill-ai-btn" onclick="fillAI()" class="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded cursor-pointer">🤖 เติม AI ในที่ว่าง</button>
-                <button id="start-game-btn" onclick="startGame()" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2 rounded cursor-pointer">🚀 เริ่มเกมเลย</button>
+                <button id="fill-ai-btn" onclick="fillAI()" class="flex-1 bg-purple-600 active:bg-purple-700 text-white font-bold py-2.5 text-xs rounded-xl shadow">🤖 เติม AI</button>
+                <button id="start-game-btn" onclick="startGame()" class="flex-1 bg-green-600 active:bg-green-700 text-white font-bold py-2.5 text-xs rounded-xl shadow">🚀 เริ่มเกม</button>
             </div>
         </div>
     </div>
 
     <!-- หน้ากระดานเกม -->
-    <div id="game-board" class="container mx-auto p-4 flex flex-col justify-between h-screen hidden">
-        <header class="bg-green-800 p-4 rounded-lg shadow-md text-center">
-            <h1 class="text-xl font-bold mb-2">♠️ ♥️ มาๆ 100แต้ม มาๅ ♦️ ♣️</h1>
-            <div class="grid grid-cols-4 gap-2 text-sm">
-                <div id="p0-info" class="p-2 bg-green-700 rounded">P0: <span id="p0-name">รอ...</span></div>
-                <div id="p1-info" class="p-2 bg-green-700 rounded">P1: <span id="p1-name">รอ...</span></div>
-                <div id="p2-info" class="p-2 bg-green-700 rounded">P2: <span id="p2-name">รอ...</span></div>
-                <div id="p3-info" class="p-2 bg-green-700 rounded">P3: <span id="p3-name">รอ...</span></div>
+    <div id="game-board" class="flex-1 flex flex-col justify-between h-full hidden relative overflow-hidden">
+        
+        <!-- Header Top Bar -->
+        <header class="bg-green-900/90 p-2 border-b border-green-700 text-center shadow-md">
+            <div class="flex justify-between items-center px-2 text-xs mb-1">
+                <div class="font-semibold text-yellow-300">ทีม A: <span id="teamA-score" class="text-white font-bold">0</span></div>
+                <div class="text-center font-bold text-yellow-400 text-sm">ประมูล: <span id="bid-score-display">-</span> (ไพ่หลัก: <span id="trump-suit-display">-</span>)</div>
+                <div class="font-semibold text-blue-300">ทีม B: <span id="teamB-score" class="text-white font-bold">0</span></div>
             </div>
-            <div class="mt-2 text-md font-semibold text-yellow-300 bg-green-950 p-2 rounded border border-green-700 min-h-[40px] flex items-center justify-center" id="game-status">
+            <div id="game-status" class="text-xs font-semibold text-yellow-200 bg-green-950 px-2 py-1 rounded-lg border border-green-800 truncate">
                 กำลังเตรียมความพร้อม...
             </div>
         </header>
 
-        <main class="flex-1 my-4 bg-green-950 rounded-xl border border-green-700 p-4 relative flex flex-col justify-between items-center">
-            <div class="text-center">
-                <p class="text-xs text-gray-400" id="label-top">ผู้เล่น 2</p>
-                <div id="played-p2" class="w-16 h-24 border border-dashed border-gray-500 rounded flex items-center justify-center bg-green-900 text-xl font-bold"></div>
+        <!-- Main Card Playing Field (Cross Grid Layout) -->
+        <main class="flex-1 relative flex items-center justify-center p-2">
+            
+            <!-- Player 2 (Top) -->
+            <div class="absolute top-2 flex flex-col items-center">
+                <span id="p2-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[80px] truncate">P2</span>
+                <div id="played-p2" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
 
-            <div class="w-full flex justify-between items-center px-10">
-                <div class="text-center">
-                    <p class="text-xs text-gray-400" id="label-left">ผู้เล่น 1</p>
-                    <div id="played-p1" class="w-16 h-24 border border-dashed border-gray-500 rounded flex items-center justify-center bg-green-900 text-xl font-bold"></div>
-                </div>
-
-                <div class="text-center bg-green-900 p-4 rounded-lg border border-green-700 max-w-xs">
-                    <p class="text-sm">ไพ่หลัก: <span id="trump-suit-display" class="font-bold text-yellow-400">-</span></p>
-                    <p class="text-sm">คะแนนประมูล: <span id="bid-score-display" class="font-bold text-yellow-400">-</span></p>
-                    <hr class="my-2 border-green-700">
-                    <p class="text-sm font-semibold text-yellow-300">ทีม A (P0+P2): <span id="teamA-score">0</span></p>
-                    <p class="text-sm font-semibold text-blue-300">ทีม B (P1+P3): <span id="teamB-score">0</span></p>
-                </div>
-
-                <div class="text-center">
-                    <p class="text-xs text-gray-400" id="label-right">ผู้เล่น 3</p>
-                    <div id="played-p3" class="w-16 h-24 border border-dashed border-gray-500 rounded flex items-center justify-center bg-green-900 text-xl font-bold"></div>
-                </div>
+            <!-- Player 1 (Left) -->
+            <div class="absolute left-2 flex flex-col items-center">
+                <span id="p1-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[80px] truncate">P1</span>
+                <div id="played-p1" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
 
-            <div class="text-center">
-                <div id="played-p0" class="w-16 h-24 border border-dashed border-gray-500 rounded flex items-center justify-center bg-green-900 text-xl font-bold mb-1"></div>
-                <p class="text-xs text-gray-400" id="label-bottom">คุณ (ผู้เล่น 0)</p>
+            <!-- Player 3 (Right) -->
+            <div class="absolute right-2 flex flex-col items-center">
+                <span id="p3-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[80px] truncate">P3</span>
+                <div id="played-p3" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
+
+            <!-- Player 0 / You (Bottom) -->
+            <div class="absolute bottom-2 flex flex-col items-center">
+                <div id="played-p0" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold mb-1"></div>
+                <span id="p0-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[80px] truncate">คุณ (P0)</span>
+            </div>
+
         </main>
 
-        <section id="controls" class="bg-green-800 p-4 rounded-lg text-center hidden mb-4 shadow-lg border border-green-600">
+        <!-- Dynamic Controls Floating Panel -->
+        <section id="controls" class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-green-900/95 p-4 rounded-2xl text-center hidden z-30 shadow-2xl border-2 border-yellow-500/80 backdrop-blur-md">
             <div id="bid-controls" class="hidden">
-                <p class="mb-3 font-semibold text-yellow-300">เลือกคะแนนประมูล:</p>
+                <p class="mb-2 font-bold text-sm text-yellow-300">เลือกคะแนนประมูล:</p>
                 <div id="bid-buttons-container" class="flex flex-wrap justify-center gap-2 mb-3"></div>
-                <button onclick="sendBid(0, true)" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-full font-bold cursor-pointer">ผ่าน (Pass)</button>
+                <button onclick="sendBid(0, true)" class="bg-red-600 active:bg-red-700 text-white px-5 py-1.5 rounded-full text-xs font-bold shadow">หมอบ / ผ่าน (Pass)</button>
             </div>
 
             <div id="trump-controls" class="hidden">
-                <p class="mb-2 font-semibold text-yellow-300">🔥 คุณชนะประมูล! เลือกดอกไพ่หลัก:</p>
-                <button onclick="sendTrump('♠')" class="bg-black text-white px-4 py-2 rounded m-1 font-bold border cursor-pointer">♠ โพดำ</button>
-                <button onclick="sendTrump('♥️')" class="bg-red-600 text-white px-4 py-2 rounded m-1 font-bold cursor-pointer">♥️ โพแดง</button>
-                <button onclick="sendTrump('♣')" class="bg-black text-white px-4 py-2 rounded m-1 font-bold border cursor-pointer">♣ ดอกจิก</button>
-                <button onclick="sendTrump('♦️')" class="bg-red-600 text-white px-4 py-2 rounded m-1 font-bold cursor-pointer">♦️ ข้าวหลามตัด</button>
+                <p class="mb-2 font-bold text-sm text-yellow-300">🔥 ชนะประมูล! เลือกดอกหลัก:</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="sendTrump('♠')" class="bg-black text-white py-2 rounded-xl text-sm font-bold border border-gray-600">♠ โพดำ</button>
+                    <button onclick="sendTrump('♥️')" class="bg-red-600 text-white py-2 rounded-xl text-sm font-bold">♥️ โพแดง</button>
+                    <button onclick="sendTrump('♣')" class="bg-black text-white py-2 rounded-xl text-sm font-bold border border-gray-600">♣ ดอกจิก</button>
+                    <button onclick="sendTrump('♦️')" class="bg-red-600 text-white py-2 rounded-xl text-sm font-bold">♦️ ข้าวหลามตัด</button>
+                </div>
             </div>
 
             <div id="kitty-controls" class="hidden">
-                <p class="mb-1 font-bold text-red-400">เลือกไพ่ 4 ใบเพื่อฝังลงใต้กอง (ห้ามเลือก A, 10, 5)</p>
-                <button id="confirm-discard-btn" onclick="sendDiscard()" class="bg-orange-600 px-6 py-2 rounded font-bold opacity-50 cursor-not-allowed" disabled>ยืนยันการทิ้งไพ่</button>
+                <p class="mb-2 text-xs font-bold text-red-300">เลือกไพ่ 4 ใบลงใต้กอง (ห้ามเลือก A, 10, 5)</p>
+                <button id="confirm-discard-btn" onclick="sendDiscard()" class="bg-orange-600 text-white px-5 py-2 rounded-xl text-xs font-bold opacity-50 cursor-not-allowed w-full shadow" disabled>ยืนยันการทิ้งไพ่</button>
             </div>
 
-            <div id="gameover-controls" class="hidden py-2">
-                <h3 id="winner-announcement" class="text-2xl font-bold text-yellow-300 mb-3">🏆 ผลการแข่งขัน</h3>
-                <div class="flex justify-center gap-4">
-                    <button onclick="restartGame()" class="bg-green-500 hover:bg-green-400 text-black font-bold px-6 py-2 rounded-full shadow-lg text-lg cursor-pointer">🔄 เล่นอีกครั้ง (ห้องเดิม)</button>
-                    <button onclick="location.reload()" class="bg-gray-600 hover:bg-gray-500 text-white font-bold px-6 py-2 rounded-full shadow-lg text-lg cursor-pointer">🏠 กลับหน้าแรก</button>
+            <div id="gameover-controls" class="hidden py-1">
+                <h3 id="winner-announcement" class="text-lg font-bold text-yellow-300 mb-3">🏆 ผลการแข่งขัน</h3>
+                <div class="flex flex-col gap-2">
+                    <button onclick="restartGame()" class="bg-green-500 active:bg-green-600 text-black font-bold py-2 rounded-xl text-xs shadow">🔄 เล่นอีกครั้ง (ห้องเดิม)</button>
+                    <button onclick="location.reload()" class="bg-gray-700 active:bg-gray-600 text-white font-bold py-2 rounded-xl text-xs shadow">🏠 กลับหน้าแรก</button>
                 </div>
             </div>
         </section>
 
-        <footer class="bg-green-950 p-4 rounded-t-xl border-t border-green-700 text-center">
-            <p class="text-sm text-gray-400 mb-2 font-bold">ไพ่ในมือของคุณ:</p>
-            <div id="player-hand" class="flex justify-center flex-wrap gap-2 min-h-[100px]"></div>
+        <!-- Hand Deck Bottom Bar -->
+        <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl">
+            <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เลื่อนซ้าย-ขวาได้):</div>
+            <div id="player-hand" class="hand-container min-h-[90px]"></div>
         </footer>
     </div>
 
@@ -159,7 +194,7 @@
 
         function createRoom() {
             const name = document.getElementById('playerName').value;
-            if(!name) return alert('ใส่ชื่อก่อนครับ');
+            if(!name) return alert('กรอกชื่อก่อนครับ');
             socket.emit('createRoom', name);
         }
 
@@ -195,7 +230,7 @@
             if (!myRoomId) return;
             const shareUrl = `${window.location.origin}${window.location.pathname}?room=${myRoomId}`;
             navigator.clipboard.writeText(shareUrl).then(() => {
-                alert('คัดลอกลิงก์ห้องเรียบร้อย! ส่งให้เพื่อนเปิดเข้าเล่นได้เลย');
+                alert('คัดลอกลิงก์เรียบร้อย!');
             });
         }
 
@@ -233,10 +268,10 @@
                 const player = room.seats[i];
                 if (player) {
                     seatEl.innerText = `เก้าอี้ ${i}: ${player.name}`;
-                    seatEl.className = "p-3 bg-green-700 rounded border border-yellow-400 font-bold mb-2";
+                    seatEl.className = "p-2.5 bg-green-700 rounded-lg border border-yellow-400 font-bold mb-2 text-xs truncate";
                 } else {
-                    seatEl.innerText = `เก้าอี้ ${i}: ว่าง (กดเพื่อเลือก)`;
-                    seatEl.className = "p-3 bg-green-900 rounded border border-gray-600 mb-2 cursor-pointer hover:bg-green-800";
+                    seatEl.innerText = `เก้าอี้ ${i}: ว่าง`;
+                    seatEl.className = "p-2.5 bg-green-950 rounded-lg border border-gray-700 text-xs truncate cursor-pointer hover:bg-green-800";
                 }
             }
 
@@ -273,10 +308,10 @@
                 if (card) {
                     const isRed = card.suit === '♥️' || card.suit === '♦️';
                     el.innerText = `${card.value}${card.suit}`;
-                    el.className = `w-16 h-24 bg-white text-xl font-bold rounded flex items-center justify-center border-2 border-yellow-500 ${isRed ? 'text-red-600' : 'text-black'}`;
+                    el.className = `w-12 h-16 bg-white text-base font-bold rounded-lg flex items-center justify-center border-2 border-yellow-400 shadow-md ${isRed ? 'text-red-600' : 'text-black'}`;
                 } else {
                     el.innerText = '';
-                    el.className = "w-16 h-24 border border-dashed border-gray-500 rounded flex items-center justify-center bg-green-900";
+                    el.className = "w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60";
                 }
             }
 
@@ -296,20 +331,20 @@
             let mySeatIndex = myCurrentPlayer ? myCurrentPlayer.seat : -1;
 
             if (room.gameState === 'BIDDING') {
-                document.getElementById('game-status').innerText = `ถึงตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกคะแนนประมูล`;
+                document.getElementById('game-status').innerText = `ตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกประมูล`;
                 if (mySeatIndex === room.bidTurn) {
                     controls.classList.remove('hidden');
                     bidControls.classList.remove('hidden');
                     renderBidButtons(room.highestBid);
                 }
             } else if (room.gameState === 'SELECT_TRUMP') {
-                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกไพ่หลัก...`;
+                document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกหลัก...`;
                 if (mySeatIndex === room.dealer) {
                     controls.classList.remove('hidden');
                     trumpControls.classList.remove('hidden');
                 }
             } else if (room.gameState === 'KITTY_DISCARD') {
-                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer].name}) กำลังเลือกไพ่ทิ้งลงใต้กอง 4 ใบ...`;
+                document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) กำลังฝังไพ่ 4 ใบ...`;
                 if (mySeatIndex === room.dealer) {
                     controls.classList.remove('hidden');
                     kittyControls.classList.remove('hidden');
@@ -321,10 +356,10 @@
                 let leadSuitInfo = "";
                 if (playedCount > 0) {
                     let leadCard = room.currentRoundCards[room.starterPlayer];
-                    leadSuitInfo = ` | ดอกที่ต้องออก: ${leadCard.suit}`;
+                    leadSuitInfo = ` | บังคับออก: ${leadCard.suit}`;
                 }
 
-                document.getElementById('game-status').innerText = `ตาผู้เล่น P${currentTurn} (${room.seats[currentTurn].name}) ลงไพ่ (ดอกหลัก: ${room.trumpSuit})${leadSuitInfo}`;
+                document.getElementById('game-status').innerText = `ตา P${currentTurn} (${room.seats[currentTurn].name}) ออกไพ่${leadSuitInfo}`;
             } else if (room.gameState === 'END') {
                 controls.classList.remove('hidden');
                 gameoverControls.classList.remove('hidden');
@@ -335,10 +370,10 @@
                 
                 let isWinner = dealerTeamScore >= dealerScoreNeeded;
                 let winningTeamName = isWinner 
-                    ? (dealerTeamIsA ? 'ทีม A (P0+P2)' : 'ทีม B (P1+P3)') 
-                    : (dealerTeamIsA ? 'ทีม B (P1+P3)' : 'ทีม A (P0+P2)');
+                    ? (dealerTeamIsA ? 'ทีม A' : 'ทีม B') 
+                    : (dealerTeamIsA ? 'ทีม B' : 'ทีม A');
 
-                document.getElementById('winner-announcement').innerText = `🎉 ${winningTeamName} ชนะ! (คะแนนที่ทำได้: ${dealerTeamScore}/${dealerScoreNeeded})`;
+                document.getElementById('winner-announcement').innerText = `🎉 ${winningTeamName} ชนะ! (${dealerTeamScore}/${dealerScoreNeeded})`;
                 document.getElementById('game-status').innerText = `จบเกมแล้ว! 🎉`;
             }
         });
@@ -350,8 +385,8 @@
                 const cardEl = document.createElement('div');
                 const isSelected = selectedDiscardIndexes.includes(index);
                 const isRed = card.suit === '♥️' || card.suit === '♦️';
-                cardEl.className = `card w-14 h-22 bg-white font-bold rounded shadow p-1 cursor-pointer border-2 ${isSelected ? 'selected-card' : 'border-gray-300'} ${isRed ? 'text-red-600' : 'text-black'}`;
-                cardEl.innerHTML = `<div>${card.value}</div><div class="text-center text-lg">${card.suit}</div>`;
+                cardEl.className = `card-item w-11 h-18 bg-white font-bold rounded-lg p-1 text-xs cursor-pointer border-2 ${isSelected ? 'selected-card' : 'border-gray-300'} ${isRed ? 'text-red-600' : 'text-black'}`;
+                cardEl.innerHTML = `<div>${card.value}</div><div class="text-center text-sm mt-1">${card.suit}</div>`;
                 cardEl.onclick = () => onCardClick(index);
                 handDiv.appendChild(cardEl);
             });
@@ -393,7 +428,7 @@
             let nextBid = currentHighest === 60 ? 65 : currentHighest + 5;
             if (nextBid <= 100) {
                 const btn = document.createElement('button');
-                btn.className = "bg-blue-600 hover:bg-blue-500 text-white font-bold py-1 px-4 rounded cursor-pointer";
+                btn.className = "bg-blue-600 active:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-xl text-xs shadow";
                 btn.innerText = `เรียก ${nextBid} แต้ม`;
                 btn.onclick = () => sendBid(nextBid, false);
                 container.appendChild(btn);
