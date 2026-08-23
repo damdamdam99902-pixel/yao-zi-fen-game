@@ -49,21 +49,23 @@
         .suit-black {
             color: #0f172a;
         }
+        /* ปรับปรุงขนาดและดีไซน์กล่องไพ่คะแนนสะสมให้อ่านง่าย */
         .point-card-mini {
-            width: 20px;
-            height: 28px;
-            font-size: 9px;
-            border-radius: 3px;
-            margin-left: -10px;
-            box-shadow: -1px 1px 3px rgba(0,0,0,0.5);
-            background: white;
+            width: 26px;
+            height: 36px;
+            font-size: 11px;
+            border-radius: 5px;
+            margin-left: -12px;
+            box-shadow: -1px 2px 4px rgba(0,0,0,0.6);
+            background: #ffffff;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             font-weight: 900;
-            line-height: 1;
+            line-height: 0.95;
             flex-shrink: 0;
+            border: 1px solid #94a3b8;
         }
         .point-card-mini:first-child {
             margin-left: 0;
@@ -138,14 +140,14 @@
             </div>
 
             <!-- ช่องเก็บไพ่คะแนนสะสม -->
-            <div class="grid grid-cols-2 gap-2 bg-green-950/80 p-1.5 rounded-xl border border-green-800">
-                <div class="flex items-center gap-1 overflow-x-auto min-h-[30px] px-1 border-r border-green-800">
-                    <span class="text-[9px] text-yellow-400 font-bold shrink-0">ไพ่ A:</span>
-                    <div id="teamA-captured-cards" class="flex items-center overflow-x-auto pl-2 py-0.5"></div>
+            <div class="grid grid-cols-2 gap-2 bg-green-950/90 p-2 rounded-xl border border-green-800">
+                <div class="flex items-center gap-1.5 overflow-x-auto min-h-[42px] px-1 border-r border-green-800">
+                    <span class="text-[10px] text-yellow-400 font-extrabold shrink-0">ไพ่ A:</span>
+                    <div id="teamA-captured-cards" class="flex items-center overflow-x-auto pl-1 py-1"></div>
                 </div>
-                <div class="flex items-center gap-1 overflow-x-auto min-h-[30px] px-1">
-                    <span class="text-[9px] text-blue-400 font-bold shrink-0">ไพ่ B:</span>
-                    <div id="teamB-captured-cards" class="flex items-center overflow-x-auto pl-2 py-0.5"></div>
+                <div class="flex items-center gap-1.5 overflow-x-auto min-h-[42px] px-1">
+                    <span class="text-[10px] text-blue-400 font-extrabold shrink-0">ไพ่ B:</span>
+                    <div id="teamB-captured-cards" class="flex items-center overflow-x-auto pl-1 py-1"></div>
                 </div>
             </div>
 
@@ -215,7 +217,7 @@
 
         <!-- Hand Deck Bottom Bar -->
         <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10">
-            <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เลื่อนซ้าย-ขวาได้):</div>
+            <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เรียกรวมตามดอก ♠ ♥️ ♣ ♦️):</div>
             <div id="player-hand" class="hand-container min-h-[100px]"></div>
         </footer>
     </div>
@@ -446,21 +448,22 @@
             }
         });
 
+        // ฟังก์ชันวาดช่องไพ่คะแนนสะสมให้อ่านเลขและดอกชัดเจน
         function renderCapturedCards(elementId, cards) {
             const container = document.getElementById(elementId);
             container.innerHTML = '';
             if (cards.length === 0) {
-                container.innerHTML = '<span class="text-[9px] text-gray-500 italic">ยังไม่มี</span>';
+                container.innerHTML = '<span class="text-[10px] text-gray-400 italic">ไม่มีไพ่แต้ม</span>';
                 return;
             }
             cards.forEach(card => {
                 const isRed = card.suit === '♥️' || card.suit === '♦️';
                 const suitClass = isRed ? 'suit-red' : 'suit-black';
                 const cardEl = document.createElement('div');
-                cardEl.className = 'point-card-mini border border-gray-400';
+                cardEl.className = 'point-card-mini';
                 cardEl.innerHTML = `
-                    <span class="${suitClass}">${card.value}</span>
-                    <span class="${suitClass} text-[7px]">${card.suit}</span>
+                    <span class="${suitClass} font-black text-[11px] leading-none mb-[1px]">${card.value}</span>
+                    <span class="${suitClass} text-[10px] font-bold leading-none">${card.suit}</span>
                 `;
                 container.appendChild(cardEl);
             });
@@ -498,7 +501,7 @@
 
             if (currentRoomState.gameState === 'KITTY_DISCARD' && mySeat === currentRoomState.dealer) {
                 const card = myHand[index];
-                if (['A', '10', '5'].includes(card.value)) return alert('ห้ามทิ้งไพ่มีแต้ม!');
+                if (['A', '10', '5'].includes(card.value)) return alert('ห้ามทิ้งไพ่มีแต้ม (5, 10, A)!');
                 
                 if (selectedDiscardIndexes.includes(index)) {
                     selectedDiscardIndexes = selectedDiscardIndexes.filter(i => i !== index);
