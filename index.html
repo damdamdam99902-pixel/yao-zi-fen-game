@@ -168,14 +168,17 @@
         }
 
         function selectSeat(seatNumber) {
+            if (!myRoomId) return;
             socket.emit('changeSeat', { roomId: myRoomId, targetSeat: seatNumber });
         }
 
         function fillAI() {
+            if (!myRoomId) return alert('ไม่พบรหัสห้อง');
             socket.emit('fillAI', { roomId: myRoomId });
         }
 
         function startGame() {
+            if (!myRoomId) return alert('ไม่พบรหัสห้อง');
             socket.emit('startGameReq', { roomId: myRoomId });
         }
 
@@ -272,20 +275,20 @@
             let mySeatIndex = myCurrentPlayer ? myCurrentPlayer.seat : -1;
 
             if (room.gameState === 'BIDDING') {
-                document.getElementById('game-status').innerText = `ถึงตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกคะแนนประมูล`;
+                document.getElementById('game-status').innerText = `ถึงตา P${room.bidTurn} (${room.seats[room.bidTurn] ? room.seats[room.bidTurn].name : ''}) เลือกคะแนนประมูล`;
                 if (mySeatIndex === room.bidTurn) {
                     controls.classList.remove('hidden');
                     bidControls.classList.remove('hidden');
                     renderBidButtons(room.highestBid);
                 }
             } else if (room.gameState === 'SELECT_TRUMP') {
-                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกไพ่หลัก...`;
+                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer] ? room.seats[room.dealer].name : ''}) ชนะประมูล! กำลังเลือกดอกไพ่หลัก...`;
                 if (mySeatIndex === room.dealer) {
                     controls.classList.remove('hidden');
                     trumpControls.classList.remove('hidden');
                 }
             } else if (room.gameState === 'KITTY_DISCARD') {
-                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer].name}) กำลังเลือกไพ่ทิ้งลงใต้กอง 4 ใบ...`;
+                document.getElementById('game-status').innerText = `ผู้เล่น P${room.dealer} (${room.seats[room.dealer] ? room.seats[room.dealer].name : ''}) กำลังเลือกไพ่ทิ้งลงใต้กอง 4 ใบ...`;
                 if (mySeatIndex === room.dealer) {
                     controls.classList.remove('hidden');
                     kittyControls.classList.remove('hidden');
@@ -297,10 +300,10 @@
                 let leadSuitInfo = "";
                 if (playedCount > 0) {
                     let leadCard = room.currentRoundCards[room.starterPlayer];
-                    leadSuitInfo = ` | ดอกที่ต้องออก: ${leadCard.suit}`;
+                    if (leadCard) leadSuitInfo = ` | ดอกที่ต้องออก: ${leadCard.suit}`;
                 }
 
-                document.getElementById('game-status').innerText = `ตาผู้เล่น P${currentTurn} (${room.seats[currentTurn].name}) ลงไพ่ (ดอกหลัก: ${room.trumpSuit})${leadSuitInfo}`;
+                document.getElementById('game-status').innerText = `ตาผู้เล่น P${currentTurn} (${room.seats[currentTurn] ? room.seats[currentTurn].name : ''}) ลงไพ่ (ดอกหลัก: ${room.trumpSuit})${leadSuitInfo}`;
             }
         });
 
