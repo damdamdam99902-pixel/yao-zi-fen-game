@@ -17,22 +17,39 @@
             justify-content: center;
             align-items: flex-end;
             overflow-x: auto;
-            padding: 10px 20px;
+            padding: 12px 20px;
             scroll-behavior: smooth;
         }
+        /* ไพ่ในมือขนาดใหญ่ขึ้น และเห็นดอกชัดขึ้น */
         .card-item {
             flex: 0 0 auto;
+            width: 52px;
+            height: 76px;
             margin-left: -22px;
             transition: transform 0.15s ease, margin 0.15s ease;
-            box-shadow: -2px 0 6px rgba(0,0,0,0.3);
+            box-shadow: -2px 2px 8px rgba(0,0,0,0.4);
+            border-radius: 8px;
+            background: #ffffff;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 3px 4px;
         }
         .card-item:first-child {
             margin-left: 0;
         }
         .card-item.selected-card {
-            transform: translateY(-18px) !important;
-            border-color: #ef4444 !important;
-            box-shadow: 0 0 12px #ef4444;
+            transform: translateY(-20px) !important;
+            border: 2.5px solid #ef4444 !important;
+            box-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
+        }
+        /* สีดอกไพ่แบบเน้นความชัดเจน */
+        .suit-red {
+            color: #dc2626; /* แดงเข้มคมชัด */
+        }
+        .suit-black {
+            color: #0f172a; /* ดำสนิท */
         }
     </style>
 </head>
@@ -99,7 +116,7 @@
         <header class="bg-green-900/90 p-2 border-b border-green-700 text-center shadow-md z-10">
             <div class="flex justify-between items-center px-2 text-xs mb-1">
                 <div class="font-semibold text-yellow-300">ทีม A: <span id="teamA-score" class="text-white font-bold">0</span></div>
-                <div class="text-center font-bold text-yellow-400 text-sm">ประมูล: <span id="bid-score-display">-</span> (ไพ่หลัก: <span id="trump-suit-display">-</span>)</div>
+                <div class="text-center font-bold text-yellow-400 text-sm">ประมูล: <span id="bid-score-display">-</span> (ไพ่หลัก: <span id="trump-suit-display" class="text-lg font-bold">-</span>)</div>
                 <div class="font-semibold text-blue-300">ทีม B: <span id="teamB-score" class="text-white font-bold">0</span></div>
             </div>
             <div id="game-status" class="text-xs font-semibold text-yellow-200 bg-green-950 px-2 py-1 rounded-lg border border-green-800 truncate">
@@ -112,24 +129,24 @@
             <!-- Top Player -->
             <div class="absolute top-2 flex flex-col items-center">
                 <span id="pos-top-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
-                <div id="played-pos-top" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
+                <div id="played-pos-top" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
             </div>
 
             <!-- Left Player -->
             <div class="absolute left-2 flex flex-col items-center">
                 <span id="pos-left-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
-                <div id="played-pos-left" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
+                <div id="played-pos-left" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
             </div>
 
             <!-- Right Player -->
             <div class="absolute right-2 flex flex-col items-center">
                 <span id="pos-right-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
-                <div id="played-pos-right" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
+                <div id="played-pos-right" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
             </div>
 
             <!-- Bottom Player -->
             <div class="absolute bottom-2 flex flex-col items-center">
-                <div id="played-pos-bottom" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold mb-1"></div>
+                <div id="played-pos-bottom" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 mb-1"></div>
                 <span id="pos-bottom-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[90px] truncate">คุณ</span>
             </div>
         </main>
@@ -145,10 +162,10 @@
             <div id="trump-controls" class="hidden">
                 <p class="mb-2 font-bold text-sm text-yellow-300">🔥 ชนะประมูล! เลือกดอกหลัก:</p>
                 <div class="grid grid-cols-2 gap-2">
-                    <button onclick="sendTrump('♠')" class="bg-black text-white py-2 rounded-xl text-sm font-bold border border-gray-600">♠ โพดำ</button>
-                    <button onclick="sendTrump('♥️')" class="bg-red-600 text-white py-2 rounded-xl text-sm font-bold">♥️ โพแดง</button>
-                    <button onclick="sendTrump('♣')" class="bg-black text-white py-2 rounded-xl text-sm font-bold border border-gray-600">♣ ดอกจิก</button>
-                    <button onclick="sendTrump('♦️')" class="bg-red-600 text-white py-2 rounded-xl text-sm font-bold">♦️ ข้าวหลามตัด</button>
+                    <button onclick="sendTrump('♠')" class="bg-black text-white py-2 rounded-xl text-lg font-bold border border-gray-600">♠ โพดำ</button>
+                    <button onclick="sendTrump('♥️')" class="bg-red-600 text-white py-2 rounded-xl text-lg font-bold">♥️ โพแดง</button>
+                    <button onclick="sendTrump('♣')" class="bg-black text-white py-2 rounded-xl text-lg font-bold border border-gray-600">♣ ดอกจิก</button>
+                    <button onclick="sendTrump('♦️')" class="bg-red-600 text-white py-2 rounded-xl text-lg font-bold">♦️ ข้าวหลามตัด</button>
                 </div>
             </div>
 
@@ -169,7 +186,7 @@
         <!-- Hand Deck Bottom Bar -->
         <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10">
             <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เลื่อนซ้าย-ขวาได้):</div>
-            <div id="player-hand" class="hand-container min-h-[90px]"></div>
+            <div id="player-hand" class="hand-container min-h-[100px]"></div>
         </footer>
     </div>
 
@@ -322,11 +339,17 @@
                 const cardEl = document.getElementById(`played-pos-${pos}`);
                 if (card) {
                     const isRed = card.suit === '♥️' || card.suit === '♦️';
-                    cardEl.innerText = `${card.value}${card.suit}`;
-                    cardEl.className = `w-12 h-16 bg-white text-base font-bold rounded-lg flex items-center justify-center border-2 border-yellow-400 shadow-md ${isRed ? 'text-red-600' : 'text-black'}`;
+                    const suitClass = isRed ? 'suit-red' : 'suit-black';
+                    cardEl.innerHTML = `
+                        <div class="w-14 h-20 bg-white rounded-lg p-1 border-2 border-yellow-400 shadow-lg flex flex-col justify-between relative overflow-hidden">
+                            <div class="text-xs font-black leading-none ${suitClass}">${card.value}</div>
+                            <div class="absolute inset-0 flex items-center justify-center text-3xl font-bold ${suitClass} opacity-90">${card.suit}</div>
+                            <div class="text-[10px] text-right font-black leading-none ${suitClass} self-end">${card.suit}</div>
+                        </div>
+                    `;
                 } else {
-                    cardEl.innerText = '';
-                    cardEl.className = "w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60";
+                    cardEl.innerHTML = '';
+                    cardEl.className = "w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60";
                 }
             });
 
@@ -390,6 +413,7 @@
             }
         });
 
+        // ฟังก์ชันวาดไพ่ในมือแบบใหม่ ดอกชัดเจน มีสัญลักษณ์ใหญ่ตรงกลาง
         function renderHand() {
             const handDiv = document.getElementById('player-hand');
             handDiv.innerHTML = '';
@@ -397,8 +421,21 @@
                 const cardEl = document.createElement('div');
                 const isSelected = selectedDiscardIndexes.includes(index);
                 const isRed = card.suit === '♥️' || card.suit === '♦️';
-                cardEl.className = `card-item w-11 h-18 bg-white font-bold rounded-lg p-1 text-xs cursor-pointer border-2 ${isSelected ? 'selected-card' : 'border-gray-300'} ${isRed ? 'text-red-600' : 'text-black'}`;
-                cardEl.innerHTML = `<div>${card.value}</div><div class="text-center text-sm mt-1">${card.suit}</div>`;
+                const suitClass = isRed ? 'suit-red' : 'suit-black';
+
+                cardEl.className = `card-item border ${isSelected ? 'selected-card' : 'border-gray-300'}`;
+                cardEl.innerHTML = `
+                    <div class="flex justify-between items-start leading-none">
+                        <span class="text-xs font-black ${suitClass}">${card.value}</span>
+                        <span class="text-[10px] font-bold ${suitClass}">${card.suit}</span>
+                    </div>
+                    <div class="text-center text-2xl font-black ${suitClass} my-auto drop-shadow-sm">
+                        ${card.suit}
+                    </div>
+                    <div class="text-[10px] font-black ${suitClass} text-right leading-none">
+                        ${card.value}
+                    </div>
+                `;
                 cardEl.onclick = () => onCardClick(index);
                 handDiv.appendChild(cardEl);
             });
@@ -431,7 +468,6 @@
             }
         }
 
-        // แสดงตัวเลือกคะแนนประมูลตั้งแต่ minBid ไปจนถึง 100
         function renderBidButtons(currentHighest) {
             const container = document.getElementById('bid-buttons-container');
             container.innerHTML = '';
