@@ -97,7 +97,7 @@
     <div id="game-board" class="flex-1 flex flex-col justify-between h-full hidden relative overflow-hidden">
         
         <!-- Header Top Bar -->
-        <header class="bg-green-900/90 p-2 border-b border-green-700 text-center shadow-md">
+        <header class="bg-green-900/90 p-2 border-b border-green-700 text-center shadow-md z-10">
             <div class="flex justify-between items-center px-2 text-xs mb-1">
                 <div class="font-semibold text-yellow-300">ทีม A: <span id="teamA-score" class="text-white font-bold">0</span></div>
                 <div class="text-center font-bold text-yellow-400 text-sm">ประมูล: <span id="bid-score-display">-</span> (ไพ่หลัก: <span id="trump-suit-display">-</span>)</div>
@@ -108,31 +108,31 @@
             </div>
         </header>
 
-        <!-- Main Card Playing Field (Cross Grid Layout) -->
+        <!-- Main Card Playing Field (Cross Grid Layout Relative to Player) -->
         <main class="flex-1 relative flex items-center justify-center p-2">
             
-            <!-- Player 2 (Top) -->
+            <!-- Top Player (Partner / Opposite) -->
             <div class="absolute top-2 flex flex-col items-center">
-                <span id="p2-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[80px] truncate">P2</span>
-                <div id="played-p2" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
+                <span id="pos-top-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
+                <div id="played-pos-top" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
 
-            <!-- Player 1 (Left) -->
+            <!-- Left Player -->
             <div class="absolute left-2 flex flex-col items-center">
-                <span id="p1-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[80px] truncate">P1</span>
-                <div id="played-p1" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
+                <span id="pos-left-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
+                <div id="played-pos-left" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
 
-            <!-- Player 3 (Right) -->
+            <!-- Right Player -->
             <div class="absolute right-2 flex flex-col items-center">
-                <span id="p3-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[80px] truncate">P3</span>
-                <div id="played-p3" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
+                <span id="pos-right-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
+                <div id="played-pos-right" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold"></div>
             </div>
 
-            <!-- Player 0 / You (Bottom) -->
+            <!-- Bottom Player (Your Perspective) -->
             <div class="absolute bottom-2 flex flex-col items-center">
-                <div id="played-p0" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold mb-1"></div>
-                <span id="p0-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[80px] truncate">คุณ (P0)</span>
+                <div id="played-pos-bottom" class="w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 text-lg font-bold mb-1"></div>
+                <span id="pos-bottom-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[90px] truncate">คุณ</span>
             </div>
 
         </main>
@@ -170,7 +170,7 @@
         </section>
 
         <!-- Hand Deck Bottom Bar -->
-        <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl">
+        <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10">
             <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เลื่อนซ้าย-ขวาได้):</div>
             <div id="player-hand" class="hand-container min-h-[90px]"></div>
         </footer>
@@ -263,6 +263,7 @@
         socket.on('updateRoom', (room) => {
             currentRoomState = room;
             
+            // อัปเดตที่นั่งที่แสดงใน Room Lobby
             for (let i = 0; i < 4; i++) {
                 const seatEl = document.getElementById(`seat-${i}`);
                 const player = room.seats[i];
@@ -286,6 +287,12 @@
         socket.on('updateGameState', (room) => {
             currentRoomState = room;
 
+            // ค้นหาเก้าอี้ปัจจุบันของผู้เล่น
+            let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
+            if (myCurrentPlayer) {
+                mySeat = myCurrentPlayer.seat;
+            }
+
             if (room.gameState !== 'LOBBY') {
                 document.getElementById('lobby').classList.add('hidden');
                 document.getElementById('room-lobby').classList.add('hidden');
@@ -298,23 +305,40 @@
             document.getElementById('bid-score-display').innerText = room.highestBid;
             document.getElementById('trump-suit-display').innerText = room.trumpSuit || '-';
 
-            room.seats.forEach((p, idx) => {
-                if (p) document.getElementById(`p${idx}-name`).innerText = p.name;
-            });
+            // --- คำนวณมุมมองการหมุนโต๊ะ (Perspective Rotation) ---
+            const baseSeat = mySeat >= 0 ? mySeat : 0;
+            const positions = [
+                { seat: baseSeat, pos: 'bottom' },
+                { seat: (baseSeat + 1) % 4, pos: 'left' },
+                { seat: (baseSeat + 2) % 4, pos: 'top' },
+                { seat: (baseSeat + 3) % 4, pos: 'right' }
+            ];
 
-            for(let i = 0; i < 4; i++) {
-                const card = room.currentRoundCards[i];
-                const el = document.getElementById(`played-p${i}`);
+            positions.forEach(({ seat, pos }) => {
+                const player = room.seats[seat];
+                const card = room.currentRoundCards[seat];
+                
+                // อัปเดตชื่อผู้เล่นตามตำแหน่งมุมมอง
+                const nameEl = document.getElementById(`pos-${pos}-name`);
+                if (player) {
+                    nameEl.innerText = (pos === 'bottom') ? `คุณ (${player.name})` : player.name;
+                } else {
+                    nameEl.innerText = 'รอ...';
+                }
+
+                // อัปเดตไพ่ที่ทิ้งลงกลางโต๊ะตามตำแหน่งมุมมอง
+                const cardEl = document.getElementById(`played-pos-${pos}`);
                 if (card) {
                     const isRed = card.suit === '♥️' || card.suit === '♦️';
-                    el.innerText = `${card.value}${card.suit}`;
-                    el.className = `w-12 h-16 bg-white text-base font-bold rounded-lg flex items-center justify-center border-2 border-yellow-400 shadow-md ${isRed ? 'text-red-600' : 'text-black'}`;
+                    cardEl.innerText = `${card.value}${card.suit}`;
+                    cardEl.className = `w-12 h-16 bg-white text-base font-bold rounded-lg flex items-center justify-center border-2 border-yellow-400 shadow-md ${isRed ? 'text-red-600' : 'text-black'}`;
                 } else {
-                    el.innerText = '';
-                    el.className = "w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60";
+                    cardEl.innerText = '';
+                    cardEl.className = "w-12 h-16 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60";
                 }
-            }
+            });
 
+            // จัดการพาเนลการควบคุมตามสถานะเกม
             const controls = document.getElementById('controls');
             const bidControls = document.getElementById('bid-controls');
             const kittyControls = document.getElementById('kitty-controls');
@@ -327,25 +351,22 @@
             trumpControls.classList.add('hidden');
             gameoverControls.classList.add('hidden');
 
-            let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
-            let mySeatIndex = myCurrentPlayer ? myCurrentPlayer.seat : -1;
-
             if (room.gameState === 'BIDDING') {
                 document.getElementById('game-status').innerText = `ตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกประมูล`;
-                if (mySeatIndex === room.bidTurn) {
+                if (mySeat === room.bidTurn) {
                     controls.classList.remove('hidden');
                     bidControls.classList.remove('hidden');
                     renderBidButtons(room.highestBid);
                 }
             } else if (room.gameState === 'SELECT_TRUMP') {
                 document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกหลัก...`;
-                if (mySeatIndex === room.dealer) {
+                if (mySeat === room.dealer) {
                     controls.classList.remove('hidden');
                     trumpControls.classList.remove('hidden');
                 }
             } else if (room.gameState === 'KITTY_DISCARD') {
                 document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) กำลังฝังไพ่ 4 ใบ...`;
-                if (mySeatIndex === room.dealer) {
+                if (mySeat === room.dealer) {
                     controls.classList.remove('hidden');
                     kittyControls.classList.remove('hidden');
                 }
@@ -395,10 +416,7 @@
         function onCardClick(index) {
             if (!currentRoomState) return;
 
-            let myCurrentPlayer = currentRoomState.seats.find(s => s && s.id === socket.id);
-            let mySeatIndex = myCurrentPlayer ? myCurrentPlayer.seat : -1;
-
-            if (currentRoomState.gameState === 'KITTY_DISCARD' && mySeatIndex === currentRoomState.dealer) {
+            if (currentRoomState.gameState === 'KITTY_DISCARD' && mySeat === currentRoomState.dealer) {
                 const card = myHand[index];
                 if (['A', '10', '5'].includes(card.value)) return alert('ห้ามทิ้งไพ่มีแต้ม!');
                 
