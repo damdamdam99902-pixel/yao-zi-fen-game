@@ -221,6 +221,31 @@
         </footer>
     </div>
 
+    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (Chat Window) -->
+    <div id="chat-container" class="hidden">
+        <!-- ปุ่มเปิด/ปิด แชท float ด้านขวาบน -->
+        <button id="toggle-chat-btn" onclick="toggleChat()" class="fixed top-3 right-3 z-50 bg-yellow-500 text-black p-2.5 rounded-full shadow-lg font-bold text-xs flex items-center gap-1 active:scale-95 transition">
+            💬 แชท <span id="chat-badge" class="hidden bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5">ใหม่</span>
+        </button>
+
+        <!-- หน้าต่างแชท -->
+        <div id="chat-box" class="fixed bottom-14 right-3 w-80 max-w-[90vw] h-80 bg-green-950/95 border-2 border-yellow-500 rounded-2xl shadow-2xl z-50 hidden flex-col overflow-hidden backdrop-blur-md">
+            <div class="bg-green-900 p-2.5 border-b border-green-700 flex justify-between items-center">
+                <span class="font-bold text-xs text-yellow-300 flex items-center gap-1">💬 แชทกลางประจำห้อง</span>
+                <button onclick="toggleChat()" class="text-gray-300 hover:text-white font-bold px-2">✕</button>
+            </div>
+            
+            <!-- กล่องแสดงข้อความ -->
+            <div id="chat-messages" class="flex-1 p-3 overflow-y-auto space-y-2 text-xs flex flex-col"></div>
+
+            <!-- ช่องกรอกข้อความ -->
+            <form onsubmit="sendChatMessage(event)" class="p-2 border-t border-green-800 flex gap-1 bg-green-900/80">
+                <input type="text" id="chat-input" placeholder="พิมพ์ข้อความ..." class="flex-1 bg-black/60 text-white text-xs px-3 py-1.5 rounded-xl border border-green-700 focus:outline-none focus:border-yellow-400">
+                <button type="submit" class="bg-yellow-500 active:bg-yellow-600 text-black font-bold text-xs px-3 py-1.5 rounded-xl transition">ส่ง</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         const socket = io();
         let mySeat = -1;
@@ -228,6 +253,7 @@
         let myHand = [];
         let selectedDiscardIndexes = [];
         let currentRoomState = null;
+        let isChatOpen = false;
 
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -279,6 +305,56 @@
             });
         }
 
+        // ระบบแชท
+        function toggleChat() {
+            const chatBox = document.getElementById('chat-box');
+            isChatOpen = !isChatOpen;
+            if (isChatOpen) {
+                chatBox.classList.remove('hidden');
+                chatBox.classList.add('flex');
+                document.getElementById('chat-badge').classList.add('hidden');
+                const messagesDiv = document.getElementById('chat-messages');
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            } else {
+                chatBox.classList.add('hidden');
+                chatBox.classList.remove('flex');
+            }
+        }
+
+        function sendChatMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (message && myRoomId) {
+                socket.emit('sendChatMessage', { roomId: myRoomId, message });
+                input.value = '';
+            }
+        }
+
+        socket.on('newChatMessage', (data) => {
+            const messagesDiv = document.getElementById('chat-messages');
+            const msgEl = document.createElement('div');
+            
+            if (data.isSystem) {
+                msgEl.className = 'text-[10px] text-yellow-300 italic text-center py-1 bg-black/20 rounded-lg';
+                msgEl.innerText = data.message;
+            } else {
+                const isMe = data.senderId === socket.id;
+                msgEl.className = `p-2 rounded-xl max-w-[85%] ${isMe ? 'bg-yellow-500 text-black self-end rounded-br-none' : 'bg-green-800 text-white self-start rounded-bl-none'}`;
+                msgEl.innerHTML = `
+                    <div class="text-[9px] font-bold ${isMe ? 'text-black/70' : 'text-yellow-400'}">${data.senderName}</div>
+                    <div class="break-words font-medium">${data.message}</div>
+                `;
+            }
+            
+            messagesDiv.appendChild(msgEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            if (!isChatOpen && !data.isSystem) {
+                document.getElementById('chat-badge').classList.remove('hidden');
+            }
+        });
+
         socket.on('errorMessage', (msg) => alert(msg));
 
         socket.on('roomCreated', (data) => {
@@ -298,6 +374,7 @@
             document.getElementById('room-lobby').classList.remove('hidden');
             document.getElementById('room-lobby').classList.add('flex');
             document.getElementById('room-code-display').innerText = myRoomId;
+            document.getElementById('chat-container').classList.remove('hidden');
         }
 
         socket.on('yourHand', (hand) => {
@@ -325,6 +402,7 @@
                 document.getElementById('room-lobby').classList.add('hidden');
                 document.getElementById('room-lobby').classList.remove('flex');
                 document.getElementById('game-board').classList.remove('hidden');
+                document.getElementById('chat-container').classList.remove('hidden');
             }
         });
 
@@ -341,6 +419,7 @@
                 document.getElementById('room-lobby').classList.add('hidden');
                 document.getElementById('room-lobby').classList.remove('flex');
                 document.getElementById('game-board').classList.remove('hidden');
+                document.getElementById('chat-container').classList.remove('hidden');
             }
 
             document.getElementById('teamA-score').innerText = room.teamAScore;
