@@ -49,7 +49,6 @@
         .suit-black {
             color: #0f172a;
         }
-        /* ปรับปรุงขนาดและดีไซน์กล่องไพ่คะแนนสะสมให้อ่านง่าย */
         .point-card-mini {
             width: 26px;
             height: 36px;
@@ -107,13 +106,13 @@
 
             <div class="grid grid-cols-2 gap-3 mb-5">
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-yellow-500/50">
-                    <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A</h3>
+                    <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A (Seat 0 & 2)</h3>
                     <div id="seat-0" onclick="selectSeat(0)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 0: ว่าง</div>
                     <div id="seat-2" onclick="selectSeat(2)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 2: ว่าง</div>
                 </div>
 
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-blue-500/50">
-                    <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B</h3>
+                    <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B (Seat 1 & 3)</h3>
                     <div id="seat-1" onclick="selectSeat(1)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 1: ว่าง</div>
                     <div id="seat-3" onclick="selectSeat(3)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 3: ว่าง</div>
                 </div>
@@ -132,11 +131,11 @@
         <!-- Header Top Bar -->
         <header class="bg-green-900/95 p-2 border-b border-green-700 shadow-md z-10">
             <div class="flex justify-between items-center text-xs mb-1.5 px-1">
-                <div class="font-bold text-yellow-300">ทีม A: <span id="teamA-score" class="text-white text-sm">0</span></div>
+                <div class="font-bold text-yellow-300">ทีม A (Seat 0,2): <span id="teamA-score" class="text-white text-sm">0</span></div>
                 <div class="text-center font-bold text-yellow-400 text-xs bg-black/40 px-3 py-1 rounded-full border border-yellow-500/40">
                     ประมูล: <span id="bid-score-display">-</span> | ดอกหลัก: <span id="trump-suit-display" class="text-base font-bold">-</span>
                 </div>
-                <div class="font-bold text-blue-300">ทีม B: <span id="teamB-score" class="text-white text-sm">0</span></div>
+                <div class="font-bold text-blue-300">ทีม B (Seat 1,3): <span id="teamB-score" class="text-white text-sm">0</span></div>
             </div>
 
             <!-- ช่องเก็บไพ่คะแนนสะสม -->
@@ -192,7 +191,7 @@
             </div>
 
             <div id="trump-controls" class="hidden">
-                <p class="mb-2 font-bold text-sm text-yellow-300">🔥 ชนะประมูล! เลือกดอกหลัก:</p>
+                <p class="mb-2 font-bold text-sm text-yellow-300">🔥 ชนะประมูล! เลือกดอกหลักก่อนรับไพ่ 4 ใบ:</p>
                 <div class="grid grid-cols-2 gap-2">
                     <button onclick="sendTrump('♠')" class="bg-black text-white py-2 rounded-xl text-lg font-bold border border-gray-600">♠ โพดำ</button>
                     <button onclick="sendTrump('♥️')" class="bg-red-600 text-white py-2 rounded-xl text-lg font-bold">♥️ โพแดง</button>
@@ -202,7 +201,7 @@
             </div>
 
             <div id="kitty-controls" class="hidden">
-                <p class="mb-2 text-xs font-bold text-red-300">เลือกไพ่ 4 ใบลงใต้กอง (ห้ามเลือก A, 10, 5)</p>
+                <p class="mb-2 text-xs font-bold text-red-300">ได้ไพ่กลางแล้ว! เลือกไพ่ 4 ใบลงใต้กอง (ห้ามเลือก A, 10, 5)</p>
                 <button id="confirm-discard-btn" onclick="sendDiscard()" class="bg-orange-600 text-white px-5 py-2 rounded-xl text-xs font-bold opacity-50 cursor-not-allowed w-full shadow" disabled>ยืนยันการทิ้งไพ่</button>
             </div>
 
@@ -414,7 +413,7 @@
                     trumpControls.classList.remove('hidden');
                 }
             } else if (room.gameState === 'KITTY_DISCARD') {
-                document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) กำลังฝังไพ่ 4 ใบ...`;
+                document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) กำลังเลือกฝังไพ่ 4 ใบ...`;
                 if (mySeat === room.dealer) {
                     controls.classList.remove('hidden');
                     kittyControls.classList.remove('hidden');
@@ -448,7 +447,6 @@
             }
         });
 
-        // ฟังก์ชันวาดช่องไพ่คะแนนสะสมให้อ่านเลขและดอกชัดเจน
         function renderCapturedCards(elementId, cards) {
             const container = document.getElementById(elementId);
             container.innerHTML = '';
