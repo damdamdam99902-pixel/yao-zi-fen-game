@@ -43,7 +43,7 @@ function calculateCardScore(card) {
     return 0;
 }
 
-// ฟังก์ชันเรียงไพ่ตามดอก (♠ > ♥️ > ♣ > ♦️) แล้วตามด้วยแต้มใหญ่ไปเล็ก
+// เรียงไพ่ตามดอก (♠ > ♥️ > ♣ > ♦️) แล้วตามด้วยแต้มใหญ่ไปเล็ก
 function sortCards(a, b) {
     if (SUIT_RANKS[a.suit] !== SUIT_RANKS[b.suit]) {
         return SUIT_RANKS[a.suit] - SUIT_RANKS[b.suit];
@@ -160,16 +160,8 @@ io.on('connection', (socket) => {
 
         if (room.consecutivePasses >= 3 && room.highestBidder !== -1) {
             room.dealer = room.highestBidder;
+            // สเต็ปที่ 1: เปลี่ยนเป็นเลือกดอกหลักก่อน
             room.gameState = 'SELECT_TRUMP';
-            
-            // แจกไพ่หมอน 4 ใบให้ Dealer แล้วเรียงมือใหม่
-            room.hands[room.dealer].push(...room.kitty);
-            room.hands[room.dealer].sort(sortCards);
-            room.kitty = [];
-
-            const dealerSocket = io.sockets.sockets.get(room.seats[room.dealer].id);
-            if (dealerSocket) dealerSocket.emit('yourHand', room.hands[room.dealer]);
-
             io.to(roomId).emit('updateGameState', room);
             checkAITurn(room);
             return;
@@ -183,7 +175,19 @@ io.on('connection', (socket) => {
     socket.on('selectTrump', ({ roomId, suit }) => {
         const room = rooms[roomId];
         if (!room || room.gameState !== 'SELECT_TRUMP') return;
+        
         room.trumpSuit = suit;
+        
+        // สเต็ปที่ 2: พอเลือกดอกหลักเสร็จ ค่อยแจกไพ่กองกลาง 4 ใบเข้ามือผู้ชนะประมูล
+        room.hands[room.dealer].push(...room.kitty);
+        room.hands[room.dealer].sort(sortCards);
+        room.kitty = [];
+
+        // ส่งไพ่ในมือใหม่ 16 ใบให้ผู้เล่น
+        const dealerSocket = io.sockets.sockets.get(room.seats[room.dealer].id);
+        if (dealerSocket) dealerSocket.emit('yourHand', room.hands[room.dealer]);
+
+        // สเต็ปที่ 3: ย้ายเข้าสู่ขั้นตอนให้ทิ้ง 4 ใบ
         room.gameState = 'KITTY_DISCARD';
         io.to(roomId).emit('updateGameState', room);
         checkAITurn(room);
@@ -235,6 +239,7 @@ function startNewGame(room) {
     room.highestBid = 60;
     room.highestBidder = -1;
     room.consecutivePasses = 0;
+    room.trumpSuit = null;
     room.teamAScore = 0;
     room.teamBScore = 0;
     room.teamACapturedCards = [];
@@ -324,6 +329,7 @@ function resolveRound(room) {
         if (pts > 0) pointCardsInRound.push(c);
     });
 
+    // กำหนดคะแนนให้ทีมตาม Seat จริงแบบคงที่เสมอ (ทีม A = Seat 0, 2 / ทีม B = Seat 1, 3)
     if (winningSeat === 0 || winningSeat === 2) {
         room.teamAScore += roundPoints;
         room.teamACapturedCards.push(...pointCardsInRound);
@@ -380,6 +386,12 @@ function checkAITurn(room) {
             setTimeout(() => {
                 const suits = ['♠', '♥️', '♣', '♦️'];
                 room.trumpSuit = suits[Math.floor(Math.random() * suits.length)];
+                
+                // แจกไพ่ 4 ใบให้ AI Dealer หลังเลือกดอกหลัก
+                room.hands[room.dealer].push(...room.kitty);
+                room.hands[room.dealer].sort(sortCards);
+                room.kitty = [];
+
                 room.gameState = 'KITTY_DISCARD';
                 io.to(room.id).emit('updateGameState', room);
                 checkAITurn(room);
@@ -452,9 +464,6 @@ function socketEmitBid(room, bidValue, isPass) {
     if (room.consecutivePasses >= 3 && room.highestBidder !== -1) {
         room.dealer = room.highestBidder;
         room.gameState = 'SELECT_TRUMP';
-        room.hands[room.dealer].push(...room.kitty);
-        room.hands[room.dealer].sort(sortCards);
-        room.kitty = [];
         io.to(room.id).emit('updateGameState', room);
         checkAITurn(room);
         return;
