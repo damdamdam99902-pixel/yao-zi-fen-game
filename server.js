@@ -10,10 +10,10 @@ app.use(express.static(__dirname));
 
 const rooms = {};
 
-// ลำดับไพ่เรียงจากต่ำไปสูง
+// ลำดับไพ่เรียงจากต่ำไปสูง (2 เล็กสุด -> A ใหญ่สุด)
 const CARD_RANKS = {
-    '3': 1, '4': 2, '5': 3, '6': 4, '7': 5, '8': 6, '9': 7,
-    '10': 8, 'J': 9, 'Q': 10, 'K': 11, 'A': 12, '2': 13
+    '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7,
+    '9': 8, '10': 9, 'J': 10, 'Q': 11, 'K': 12, 'A': 13
 };
 
 // ลำดับดอกไพ่: ♠ โพดำ -> ♥️ โพแดง -> ♣ ดอกจิก -> ♦️ ข้าวหลามตัด
@@ -26,7 +26,7 @@ const SUIT_RANKS = {
 
 function createDeck() {
     const suits = ['♠', '♥️', '♣', '♦️'];
-    const values = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+    const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
     let deck = [];
     for (let s of suits) {
         for (let v of values) {
@@ -160,7 +160,6 @@ io.on('connection', (socket) => {
 
         if (room.consecutivePasses >= 3 && room.highestBidder !== -1) {
             room.dealer = room.highestBidder;
-            // สเต็ปที่ 1: เปลี่ยนเป็นเลือกดอกหลักก่อน
             room.gameState = 'SELECT_TRUMP';
             io.to(roomId).emit('updateGameState', room);
             checkAITurn(room);
@@ -178,16 +177,14 @@ io.on('connection', (socket) => {
         
         room.trumpSuit = suit;
         
-        // สเต็ปที่ 2: พอเลือกดอกหลักเสร็จ ค่อยแจกไพ่กองกลาง 4 ใบเข้ามือผู้ชนะประมูล
+        // แจกไพ่กองกลาง 4 ใบเข้ามือผู้ชนะประมูลหลังเลือกดอกหลัก
         room.hands[room.dealer].push(...room.kitty);
         room.hands[room.dealer].sort(sortCards);
         room.kitty = [];
 
-        // ส่งไพ่ในมือใหม่ 16 ใบให้ผู้เล่น
         const dealerSocket = io.sockets.sockets.get(room.seats[room.dealer].id);
         if (dealerSocket) dealerSocket.emit('yourHand', room.hands[room.dealer]);
 
-        // สเต็ปที่ 3: ย้ายเข้าสู่ขั้นตอนให้ทิ้ง 4 ใบ
         room.gameState = 'KITTY_DISCARD';
         io.to(roomId).emit('updateGameState', room);
         checkAITurn(room);
@@ -329,7 +326,6 @@ function resolveRound(room) {
         if (pts > 0) pointCardsInRound.push(c);
     });
 
-    // กำหนดคะแนนให้ทีมตาม Seat จริงแบบคงที่เสมอ (ทีม A = Seat 0, 2 / ทีม B = Seat 1, 3)
     if (winningSeat === 0 || winningSeat === 2) {
         room.teamAScore += roundPoints;
         room.teamACapturedCards.push(...pointCardsInRound);
@@ -387,7 +383,6 @@ function checkAITurn(room) {
                 const suits = ['♠', '♥️', '♣', '♦️'];
                 room.trumpSuit = suits[Math.floor(Math.random() * suits.length)];
                 
-                // แจกไพ่ 4 ใบให้ AI Dealer หลังเลือกดอกหลัก
                 room.hands[room.dealer].push(...room.kitty);
                 room.hands[room.dealer].sort(sortCards);
                 room.kitty = [];
