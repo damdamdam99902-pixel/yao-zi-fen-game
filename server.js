@@ -36,14 +36,14 @@ function createDeck() {
     return deck.sort(() => Math.random() - 0.5);
 }
 
-// คำนวณแต้มเฉพาะไพ่ 5, 10, A
+// คำนวณแต้มเฉพาะไพ่ 5, 10, A[span_0](start_span)[span_0](end_span)
 function calculateCardScore(card) {
     if (card.value === '5') return 5;
     if (card.value === '10' || card.value === 'A') return 10;
     return 0;
 }
 
-// เรียงไพ่ตามดอก (♠ > ♥️ > ♣ > ♦️) แล้วตามด้วยแต้มใหญ่ไปเล็ก
+// เรียงไพ่ตามดอก (♠ > ♥️ > ♣ > ♦️) แล้วตามด้วยแต้มใหญ่ไปเล็ก[span_1](start_span)[span_1](end_span)
 function sortCards(a, b) {
     if (SUIT_RANKS[a.suit] !== SUIT_RANKS[b.suit]) {
         return SUIT_RANKS[a.suit] - SUIT_RANKS[b.suit];
@@ -72,7 +72,7 @@ function createRoomObject(roomId) {
         starterPlayer: -1,
         currentRoundCards: [null, null, null, null],
         roundCount: 0,
-        playedHistory: [] // บันทึกประวัติไพ่ที่ออกไปแล้วในแต่ละรอบ[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)
+        playedHistory: [] // บันทึกประวัติไพ่ที่ออกไปแล้วในเกมนี้[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span)
     };
 }
 
@@ -85,6 +85,13 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.emit('roomCreated', { roomId, seat: 0 });
         io.to(roomId).emit('updateRoom', rooms[roomId]);
+        
+        // แจ้งการเข้าห้องในแชท
+        io.to(roomId).emit('newChatMessage', {
+            senderName: 'ระบบ',
+            message: `🎉 คุณ ${playerName} สร้างห้องพักสำเร็จ`,
+            isSystem: true
+        });
     });
 
     socket.on('createSinglePlayer', (playerName) => {
@@ -98,6 +105,12 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.emit('roomCreated', { roomId, seat: 0 });
         io.to(roomId).emit('updateRoom', room);
+        
+        io.to(roomId).emit('newChatMessage', {
+            senderName: 'ระบบ',
+            message: `🤖 เริ่มเกมโหมดโม่กับบอทแล้ว`,
+            isSystem: true
+        });
     });
 
     socket.on('joinRoom', ({ roomId, playerName }) => {
@@ -111,6 +124,27 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.emit('joinedSuccess', { roomId, seat: emptySeat });
         io.to(roomId).emit('updateRoom', room);
+
+        io.to(roomId).emit('newChatMessage', {
+            senderName: 'ระบบ',
+            message: `👋 คุณ ${playerName} เข้าร่วมห้องแล้ว`,
+            isSystem: true
+        });
+    });
+
+    // รับและกระจายข้อความแชท
+    socket.on('sendChatMessage', ({ roomId, message }) => {
+        const room = rooms[roomId];
+        if (!room) return;
+        const player = room.seats.find(s => s && s.id === socket.id);
+        const senderName = player ? player.name : 'ผู้รับชม';
+
+        io.to(roomId).emit('newChatMessage', {
+            senderId: socket.id,
+            senderName: senderName,
+            message: message,
+            isSystem: false
+        });
     });
 
     socket.on('changeSeat', ({ roomId, targetSeat }) => {
@@ -178,7 +212,6 @@ io.on('connection', (socket) => {
         
         room.trumpSuit = suit;
         
-        // แจกไพ่กองกลาง 4 ใบเข้ามือผู้ชนะประมูลหลังเลือกดอกหลัก
         room.hands[room.dealer].push(...room.kitty);
         room.hands[room.dealer].sort(sortCards);
         room.kitty = [];
@@ -244,7 +277,7 @@ function startNewGame(room) {
     room.teamBCapturedCards = [];
     room.roundCount = 0;
     room.currentRoundCards = [null, null, null, null];
-    room.playedHistory = []; // รีเซ็ตประวัติไพ่เมื่อเริ่มเกมใหม่[span_2](start_span)[span_2](end_span)
+    room.playedHistory = []; // ล้างประวัติไพ่[span_4](start_span)[span_4](end_span)
 
     for (let i = 0; i < 4; i++) {
         room.hands[i] = room.deck.splice(0, 12).sort(sortCards);
@@ -304,7 +337,6 @@ function resolveRound(room) {
     let winningSeat = room.starterPlayer;
     let winningCard = leadCard;
 
-    // บันทึกไพ่ทั้ง 4 ใบของรอบนี้เข้าประวัติ[span_3](start_span)[span_3](end_span)[span_4](start_span)[span_4](end_span)
     room.currentRoundCards.forEach(c => {
         if (c) room.playedHistory.push(c);
     });
@@ -369,9 +401,7 @@ function resolveRound(room) {
     checkAITurn(room);
 }
 
-// ==========================================
-// ฟังก์ชันคำนวณการเลือกไพ่ของ AI ตามกติกา[span_5](start_span)[span_5](end_span)
-// ==========================================
+// อัลกอริทึมเลือกไพ่ของ AI ตามเทคนิคที่กำหนด[span_5](start_span)[span_5](end_span)
 function getSmartAICardIndex(room, seatIndex) {
     let hand = room.hands[seatIndex];
     let playedCards = room.currentRoundCards;
@@ -380,7 +410,6 @@ function getSmartAICardIndex(room, seatIndex) {
     let playedCount = playedCards.filter(c => c !== null).length;
     let leadCard = playedCount > 0 ? playedCards[starter] : null;
 
-    // เลือกเฉพาะไพ่ที่ออกได้ถูกต้องตามกฎ[span_6](start_span)[span_6](end_span)
     let validCards = [];
     if (leadCard) {
         validCards = hand.map((card, idx) => ({ card, idx })).filter(item => item.card.suit === leadCard.suit);
@@ -389,13 +418,11 @@ function getSmartAICardIndex(room, seatIndex) {
         validCards = hand.map((card, idx) => ({ card, idx }));
     }
 
-    // ฟังก์ชันกรองระหว่างไพ่ธรรมดากับไพ่แต้ม (10, 5)[span_7](start_span)[span_7](end_span)
     const filterPointCards = (list, keepPoints) => {
-        let filtered = list.filter(item => ['5', '10'].includes(item.card.value) === keepPoints);
-        return filtered.length > 0 ? filtered : list; // หากไม่มีไพ่ธรรมดา จำเป็นต้องยอมใช้ไพ่แต้ม[span_8](start_span)[span_8](end_span)
+        let filtered = list.filter(item => ['5', '10', 'A'].includes(item.card.value) === keepPoints);
+        return filtered.length > 0 ? filtered : list;
     };
 
-    // ฟังก์ชันเปรียบเทียบว่าไพ่ A ใหญ่กว่าไพ่ B หรือไม่[span_9](start_span)[span_9](end_span)
     const isCardBigger = (cardA, cardB) => {
         if (!cardB) return true;
         if (cardA.suit === cardB.suit) {
@@ -407,19 +434,14 @@ function getSmartAICardIndex(room, seatIndex) {
         return false;
     };
 
-    // -------------------------------------------------------------
-    // คนที่ 1: ออกใหญ่สุด ยกเว้น 10 หรือ 5 (ถ้าไม่มีตัวอื่นค่อยออก 10 หรือ 5)[span_10](start_span)[span_10](end_span)
-    // -------------------------------------------------------------
+    // 1. ออกคนแรก[span_6](start_span)[span_6](end_span)
     if (playedCount === 0) {
         let nonPoints = filterPointCards(validCards, false);
         nonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
         return nonPoints[0].idx;
     }
 
-    // -------------------------------------------------------------
-    // คนที่ 2: พยายามออกใหญ่กว่าคนแรกเสมอ ยกเว้น 10 หรือ 5[span_11](start_span)[span_11](end_span)
-    // หากใหญ่ไม่เท่าคนแรก ให้ออกเล็กสุดแทน[span_12](start_span)[span_12](end_span)
-    // -------------------------------------------------------------
+    // 2. ออกคนที่สอง[span_7](start_span)[span_7](end_span)
     if (playedCount === 1) {
         let p1Card = playedCards[starter];
         let winningChoices = validCards.filter(item => isCardBigger(item.card, p1Card));
@@ -429,33 +451,28 @@ function getSmartAICardIndex(room, seatIndex) {
             nonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
             return nonPoints[0].idx;
         } else {
-            // สู้ไม่ได้ -> ออกใบเล็กที่สุดแทน[span_13](start_span)[span_13](end_span)
             let nonPoints = filterPointCards(validCards, false);
             nonPoints.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
             return nonPoints[0].idx;
         }
     }
 
-    // -------------------------------------------------------------
-    // คนที่ 3: ดูว่าไพ่คนแรกใหญ่สุดหรือยัง (อิงตามไพ่ที่เคยออกไปแล้ว)[span_14](start_span)[span_14](end_span)
-    // -------------------------------------------------------------
+    // 3. ออกคนที่สาม[span_8](start_span)[span_8](end_span)
     if (playedCount === 2) {
         let p1Card = playedCards[starter];
         
-        // เช็กว่ามีไพ่ใบไหนในดอกเดียวกันที่ใหญ่กว่า p1Card และยังไม่ออกมาในเกมหรือไม่[span_15](start_span)[span_15](end_span)
         let isP1HighestSoFar = true;
         for (let val in CARD_RANKS) {
             if (CARD_RANKS[val] > CARD_RANKS[p1Card.value]) {
                 let cardAlreadyPlayed = room.playedHistory.some(c => c.suit === p1Card.suit && c.value === val);
                 if (!cardAlreadyPlayed) {
-                    isP1HighestSoFar = false; // ยังมีไพ่ที่ใหญ่กว่ายังไม่ออก[span_16](start_span)[span_16](end_span)
+                    isP1HighestSoFar = false;
                     break;
                 }
             }
         }
 
         if (isP1HighestSoFar) {
-            // ไพ่คนแรกใหญ่ที่สุดแล้ว -> พยายามออกไพ่คะแนน A, 10, 5 ให้เพื่อน[span_17](start_span)[span_17](end_span)
             let pointCards = validCards.filter(item => ['A', '10', '5'].includes(item.card.value));
             if (pointCards.length > 0) {
                 pointCards.sort((a, b) => calculateCardScore(b.card) - calculateCardScore(a.card));
@@ -463,7 +480,6 @@ function getSmartAICardIndex(room, seatIndex) {
             }
         }
 
-        // หากคนแรกไม่ใช่ไพ่ใหญ่สุด -> ออกไพ่ใหญ่ที่สุด[span_18](start_span)[span_18](end_span)
         let p2Seat = (starter + 1) % 4;
         let p2Card = playedCards[p2Seat];
         let currentWinningCard = isCardBigger(p1Card, p2Card) ? p1Card : p2Card;
@@ -474,16 +490,13 @@ function getSmartAICardIndex(room, seatIndex) {
             nonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
             return nonPoints[0].idx;
         } else {
-            // สู้ไม่ได้ -> ออกใบเล็กที่สุด ยกเว้น 10 หรือ 5[span_19](start_span)[span_19](end_span)
             let nonPoints = filterPointCards(validCards, false);
             nonPoints.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
             return nonPoints[0].idx;
         }
     }
 
-    // -------------------------------------------------------------
-    // คนที่ 4: ดูว่าไพ่คนสองใหญ่ที่สุดหรือใหญ่กว่าคนแรกและคนสามหรือไม่[span_20](start_span)[span_20](end_span)
-    // -------------------------------------------------------------
+    // 4. ออกคนที่สี่[span_9](start_span)[span_9](end_span)
     if (playedCount === 3) {
         let p1Seat = starter;
         let p2Seat = (starter + 1) % 4;
@@ -496,7 +509,6 @@ function getSmartAICardIndex(room, seatIndex) {
         let isP2Winning = isCardBigger(p2Card, p1Card) && isCardBigger(p2Card, p3Card);
 
         if (isP2Winning) {
-            // คนสองชนะ -> พยายามออกไพ่คะแนน A, 10, 5 ให้เพื่อน[span_21](start_span)[span_21](end_span)
             let pointCards = validCards.filter(item => ['A', '10', '5'].includes(item.card.value));
             if (pointCards.length > 0) {
                 pointCards.sort((a, b) => calculateCardScore(b.card) - calculateCardScore(a.card));
@@ -504,7 +516,6 @@ function getSmartAICardIndex(room, seatIndex) {
             }
         }
 
-        // หากคนสองไม่ได้ใหญ่สุด -> พยายามออกไพ่ที่ใหญ่ที่สุด[span_22](start_span)[span_22](end_span)
         let currentBest = p1Card;
         if (isCardBigger(p2Card, currentBest)) currentBest = p2Card;
         if (isCardBigger(p3Card, currentBest)) currentBest = p3Card;
@@ -515,7 +526,6 @@ function getSmartAICardIndex(room, seatIndex) {
             nonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
             return nonPoints[0].idx;
         } else {
-            // เล็กกว่าทุกคน -> ออกใบเล็กที่สุด ยกเว้น 10 หรือ 5[span_23](start_span)[span_23](end_span)
             let nonPoints = filterPointCards(validCards, false);
             nonPoints.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
             return nonPoints[0].idx;
