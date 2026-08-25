@@ -2,786 +2,457 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>100แต้ม888</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมไพ่สลาฟนับแต้ม (Bridge Slave) Online</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        body {
-            touch-action: manipulation;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        .hand-container {
-            display: flex;
-            justify-content: center;
-            align-items: flex-end;
-            overflow-x: auto;
-            padding: 12px 20px;
-            scroll-behavior: smooth;
-        }
-        .card-item {
-            flex: 0 0 auto;
-            width: 52px;
-            height: 76px;
-            margin-left: -22px;
-            transition: transform 0.15s ease, margin 0.15s ease;
-            box-shadow: -2px 2px 8px rgba(0,0,0,0.4);
-            border-radius: 8px;
-            background: #ffffff;
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 3px 4px;
-        }
-        .card-item:first-child {
-            margin-left: 0;
-        }
-        .card-item.selected-card {
-            transform: translateY(-20px) !important;
-            border: 2.5px solid #ef4444 !important;
-            box-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
-        }
-        .suit-red {
-            color: #dc2626;
-        }
-        .suit-black {
-            color: #0f172a;
-        }
-        .point-card-mini {
-            width: 26px;
-            height: 36px;
-            font-size: 11px;
-            border-radius: 5px;
-            margin-left: -12px;
-            box-shadow: -1px 2px 4px rgba(0,0,0,0.6);
-            background: #ffffff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-weight: 900;
-            line-height: 0.95;
-            flex-shrink: 0;
-            border: 1px solid #94a3b8;
-        }
-        .point-card-mini:first-child {
-            margin-left: 0;
-        }
-        /* กำหนด touch-action เพื่อป้องกันการติดเลื่อน/ซูมหน้าจอเวลาใช้นิ้วลาก */
-        #chat-box, #toggle-chat-btn {
-            touch-action: none;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Sukhumvit Set', 'Segoe UI', Tahoma, sans-serif; }
+        body { background: #1e3c23; color: white; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .screen { display: none; height: 100%; width: 100%; }
+        .active { display: flex; }
+
+        /* Lobby */
+        #lobby-screen { flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, #2e5d32, #0f2011); }
+        .card-panel { background: rgba(0,0,0,0.6); padding: 30px; border-radius: 16px; width: 360px; text-align: center; border: 1px solid #4a7c4e; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        .card-panel h1 { font-size: 24px; margin-bottom: 20px; color: #f39c12; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        .input-group label { display: block; font-size: 14px; margin-bottom: 5px; color: #ccc; }
+        .input-group input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #555; background: #222; color: #fff; font-size: 16px; }
+        .btn { width: 100%; padding: 12px; margin-top: 8px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-primary { background: #27ae60; color: white; }
+        .btn-primary:hover { background: #2ecc71; }
+        .btn-secondary { background: #2980b9; color: white; }
+        .btn-secondary:hover { background: #3498db; }
+        .btn-purple { background: #8e44ad; color: white; }
+        .btn-purple:hover { background: #9b59b6; }
+        .btn-danger { background: #c0392b; color: white; }
+        .btn-danger:hover { background: #e74c3c; }
+
+        /* Game Layout Main Framework */
+        #game-screen { flex-direction: row; height: 100vh; background: #1b381e; }
+        .main-game-area { flex: 1; display: flex; flex-direction: column; position: relative; }
+        
+        .top-bar { height: 50px; background: rgba(0,0,0,0.4); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; border-bottom: 1px solid #333; }
+        .game-table { flex: 1; display: grid; grid-template-rows: 100px 1fr 180px; grid-template-columns: 140px 1fr 140px; position: relative; padding: 10px; }
+        
+        /* Table Seats */
+        .seat { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .seat-top { grid-area: 1 / 2 / 2 / 3; }
+        .seat-left { grid-area: 2 / 1 / 3 / 2; }
+        .seat-right { grid-area: 2 / 3 / 3 / 4; }
+        .seat-bottom { grid-area: 3 / 1 / 4 / 4; }
+        
+        .player-tag { background: rgba(0,0,0,0.7); padding: 6px 12px; border-radius: 20px; border: 1px solid #f39c12; font-size: 13px; text-align: center; }
+        .player-tag.active-turn { border-color: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
+        
+        /* Center Felt Table */
+        .table-center { grid-area: 2 / 2 / 3 / 3; background: #234727; border-radius: 50%; border: 8px solid #17301a; display: flex; justify-content: center; align-items: center; position: relative; box-shadow: inset 0 0 20px rgba(0,0,0,0.6); }
+        .played-cards-container { position: relative; width: 220px; height: 220px; }
+        .played-card-slot { position: absolute; width: 60px; height: 85px; border-radius: 6px; border: 1px dashed rgba(255,255,255,0.2); display: flex; justify-content: center; align-items: center; }
+        .slot-top { top: 10px; left: 80px; }
+        .slot-bottom { bottom: 10px; left: 80px; }
+        .slot-left { top: 67px; left: 10px; }
+        .slot-right { top: 67px; right: 10px; }
+
+        /* Card Elements */
+        .card { width: 60px; height: 85px; background: white; border-radius: 6px; color: black; display: flex; flex-direction: column; justify-content: space-between; padding: 4px; font-weight: bold; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); user-select: none; transition: transform 0.2s, top 0.2s; position: relative; cursor: pointer; }
+        .card.red { color: #e74c3c; }
+        .card.selected { transform: translateY(-15px); border: 2px solid #f1c40f; }
+        .card-back { background: linear-gradient(135deg, #b22222, #8b0000); border: 2px solid #fff; }
+
+        /* Hand Area */
+        .my-hand { display: flex; justify-content: center; gap: -20px; margin-top: 10px; }
+        .my-hand .card { margin-left: -25px; }
+        .my-hand .card:first-child { margin-left: 0; }
+        .my-hand .card:hover { transform: translateY(-10px); z-index: 100; }
+
+        /* Controls Panel */
+        .action-panel { position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); padding: 10px 20px; border-radius: 30px; display: flex; gap: 10px; border: 1px solid #f39c12; z-index: 200; }
+
+        /* Sidebar & Chat Layout */
+        .sidebar { width: 300px; background: #142616; border-left: 1px solid #2a4c2d; display: flex; flex-direction: column; }
+        .scoreboard { padding: 15px; border-bottom: 1px solid #2a4c2d; background: #0d1a0e; }
+        .chat-box { flex: 1; display: flex; flex-direction: column; padding: 10px; }
+        .messages { flex: 1; overflow-y: auto; background: #0a120b; border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 10px; }
+        .msg { margin-bottom: 6px; }
+        .msg.sys { color: #f1c40f; font-style: italic; }
+        .chat-input { display: flex; gap: 5px; }
+        .chat-input input { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #1a2e1c; color: white; }
+
+        /* Modal Overlay */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: #1e3c23; padding: 25px; border-radius: 12px; border: 2px solid #f39c12; text-align: center; max-width: 400px; }
+        
+        .score-list { text-align: left; margin: 10px 0; max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; font-size: 12px; }
     </style>
 </head>
-<body class="bg-green-950 text-white h-screen flex flex-col font-sans overflow-hidden">
+<body>
 
-    <!-- ล็อบบี้สร้าง/เข้าห้อง -->
-    <div id="lobby" class="flex-1 flex flex-col items-center justify-center p-4">
-        <div class="text-center mb-6">
-            <h1 class="text-3xl font-extrabold text-yellow-400 drop-shadow-md">♠️ 100แต้ม ซอย 9 ♣️</h1>
-            <p class="text-xs text-green-300 mt-1">ฝืมือไม่ถึงไปฝึกที่หลังบ้านกู</p>
-        </div>
-        <div class="bg-green-900/90 p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center border border-green-700 backdrop-blur-sm">
-            <input type="text" id="playerName" placeholder="กรอกชื่อของคุณ" class="w-full p-3 mb-4 text-black bg-white rounded-xl font-bold text-center outline-none border-2 border-yellow-500 focus:ring-2 focus:ring-yellow-400">
-            
-            <button onclick="createSinglePlayer()" class="w-full bg-purple-600 active:bg-purple-700 text-white font-bold py-3 rounded-xl mb-3 shadow-md transition">🤖 เล่นกับ บอท AI</button>
-            <button onclick="createRoom()" class="w-full bg-yellow-500 active:bg-yellow-600 text-black font-bold py-3 rounded-xl mb-3 shadow-md transition">👥 สร้างห้องเล่นกับเพื่อน</button>
-            
-            <div class="relative flex py-2 items-center">
-                <div class="flex-grow border-t border-green-700"></div>
-                <span class="flex-shrink mx-2 text-xs text-green-400">หรือเข้าร่วม</span>
-                <div class="flex-grow border-t border-green-700"></div>
+    <!-- 1. Lobby Screen -->
+    <div id="lobby-screen" class="screen active">
+        <div class="card-panel">
+            <h1>สลาฟนับแต้ม (Bridge)</h1>
+            <div class="input-group">
+                <label>ชื่อผู้เล่น:</label>
+                <input type="text" id="player-name-input" value="ผู้เล่น 1">
             </div>
-
-            <input type="text" id="roomIdInput" placeholder="รหัสห้อง 4 หลัก" class="w-full p-3 mb-3 text-black bg-white rounded-xl font-bold text-center outline-none">
-            <button onclick="joinRoom()" class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition">เข้าห้องเพื่อน</button>
+            <button class="btn btn-primary" onclick="createRoom()">สร้างห้องใหม่ (Multiplayer)</button>
+            <button class="btn btn-purple" onclick="createSinglePlayer()">เล่นกับบอท AI (Single Player)</button>
+            <hr style="margin: 15px 0; border-color: #444;">
+            <div class="input-group">
+                <label>รหัสห้องเพื่อเข้าร่วม:</label>
+                <input type="text" id="room-id-input" placeholder="กรอกรหัสห้อง 4 หลัก">
+            </div>
+            <button class="btn btn-secondary" onclick="joinRoom()">เข้าร่วมห้อง</button>
         </div>
     </div>
 
-    <!-- หน้าเลือกที่นั่ง & เตรียมตัว (Room Lobby) -->
-    <div id="room-lobby" class="flex-1 p-4 max-w-md mx-auto hidden flex-col justify-center items-center w-full">
-        <div class="bg-green-900/90 p-5 rounded-2xl border border-green-700 w-full text-center shadow-2xl">
-            <h2 class="text-xl font-bold mb-1 text-yellow-300">ห้องพักรอ - รหัส: <span id="room-code-display" class="text-white underline"></span></h2>
-            <button onclick="copyRoomLink()" class="mb-4 bg-yellow-500 active:bg-yellow-400 text-black text-xs px-3 py-1.5 rounded-full font-bold shadow">📋 ก๊อปปี้ลิงก์ชวนเพื่อน</button>
-
-            <p class="text-xs text-gray-300 mb-3">แตะเลือกที่นั่ง (ทีม A: 0+2 | ทีม B: 1+3)</p>
-
-            <div class="grid grid-cols-2 gap-3 mb-5">
-                <div class="bg-green-950/80 p-2.5 rounded-xl border border-yellow-500/50">
-                    <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A (Seat 0 & 2)</h3>
-                    <div id="seat-0" onclick="selectSeat(0)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 0: ว่าง</div>
-                    <div id="seat-2" onclick="selectSeat(2)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 2: ว่าง</div>
-                </div>
-
-                <div class="bg-green-950/80 p-2.5 rounded-xl border border-blue-500/50">
-                    <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B (Seat 1 & 3)</h3>
-                    <div id="seat-1" onclick="selectSeat(1)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 1: ว่าง</div>
-                    <div id="seat-3" onclick="selectSeat(3)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 3: ว่าง</div>
-                </div>
+    <!-- 2. Main Game Screen -->
+    <div id="game-screen" class="screen">
+        <div class="main-game-area">
+            <div class="top-bar">
+                <div>ห้อง: <span id="display-room-id" style="color: #f39c12; font-weight: bold;">-</span></div>
+                <div>สถานะ: <span id="display-game-state" style="color: #00ffcc;">กำลังรอผู้เล่น...</span></div>
+                <div>ไพ่หลัก (Trump): <span id="display-trump" style="font-size: 18px;">-</span></div>
             </div>
 
-            <div class="flex gap-2">
-                <button id="fill-ai-btn" onclick="fillAI()" class="flex-1 bg-purple-600 active:bg-purple-700 text-white font-bold py-2.5 text-xs rounded-xl shadow">🤖 เติม AI</button>
-                <button id="start-game-btn" onclick="startGame()" class="flex-1 bg-green-600 active:bg-green-700 text-white font-bold py-2.5 text-xs rounded-xl shadow">🚀 เริ่มเกม</button>
+            <div class="game-table">
+                <!-- Seat Top (Partner / AI 2) -->
+                <div class="seat seat-top">
+                    <div id="player-tag-2" class="player-tag">เก้าอี้ว่าง</div>
+                </div>
+
+                <!-- Seat Left (Opponent / AI 1) -->
+                <div class="seat seat-left">
+                    <div id="player-tag-1" class="player-tag">เก้าอี้ว่าง</div>
+                </div>
+
+                <!-- Center Felt Table -->
+                <div class="table-center">
+                    <div class="played-cards-container">
+                        <div id="slot-0" class="played-card-slot slot-bottom"></div>
+                        <div id="slot-1" class="played-card-slot slot-left"></div>
+                        <div id="slot-2" class="played-card-slot slot-top"></div>
+                        <div id="slot-3" class="played-card-slot slot-right"></div>
+                    </div>
+                </div>
+
+                <!-- Seat Right (Opponent / AI 3) -->
+                <div class="seat seat-right">
+                    <div id="player-tag-3" class="player-tag">เก้าอี้ว่าง</div>
+                </div>
+
+                <!-- Seat Bottom (Current Client Player) -->
+                <div class="seat seat-bottom">
+                    <div id="player-tag-0" class="player-tag" style="margin-bottom: 5px;">เก้าอี้ว่าง</div>
+                    <div id="my-hand-container" class="my-hand"></div>
+                </div>
+
+                <!-- Action Controls (Floating) -->
+                <div id="action-panel" class="action-panel" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Sidebar (Scoreboard + Chat) -->
+        <div class="sidebar">
+            <div class="scoreboard">
+                <h3 style="color: #f39c12; margin-bottom: 8px;">📊 คะแนนและสถิติ</h3>
+                <p>การประมูลสูงสุด: <span id="display-bid" style="color: #00ffcc;">60</span> โดย <span id="display-bidder">-</span></p>
+                <hr style="margin: 8px 0; border-color: #2a4c2d;">
+                <div>
+                    <strong>ทีม A ( seat 0 + 2 ):</strong> <span id="score-team-a" style="color: #f1c40f;">0</span> แต้ม
+                    <div class="score-list" id="cards-team-a">ไพ่ที่กินได้: -</div>
+                </div>
+                <div style="margin-top: 8px;">
+                    <strong>ทีม B ( seat 1 + 3 ):</strong> <span id="score-team-b" style="color: #f1c40f;">0</span> แต้ม
+                    <div class="score-list" id="cards-team-b">ไพ่ที่กินได้: -</div>
+                </div>
+                <button id="start-game-btn" class="btn btn-primary" style="margin-top: 10px; display: none;" onclick="requestStartGame()">เริ่มเกม</button>
+                <button id="fill-ai-btn" class="btn btn-purple" style="margin-top: 5px; display: none;" onclick="fillAI()">เติม AI ให้เต็ม</button>
+            </div>
+
+            <div class="chat-box">
+                <div id="messages-container" class="messages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chat-input-field" placeholder="พิมพ์ข้อความ..." onkeypress="handleChatKeyPress(event)">
+                    <button class="btn btn-secondary" style="width: 60px; padding: 0;" onclick="sendChat()">ส่ง</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- หน้ากระดานเกม -->
-    <div id="game-board" class="flex-1 flex flex-col justify-between h-full hidden relative overflow-hidden">
-        
-        <!-- Header Top Bar -->
-        <header class="bg-green-900/95 p-2 border-b border-green-700 shadow-md z-10">
-            <div class="flex justify-between items-center text-xs mb-1.5 px-1">
-                <div class="font-bold text-yellow-300">ทีม A (Seat 0,2): <span id="teamA-score" class="text-white text-sm">0</span></div>
-                <div class="text-center font-bold text-yellow-400 text-xs bg-black/40 px-3 py-1 rounded-full border border-yellow-500/40">
-                    เรียก : <span id="bid-score-display">-</span> | ดอกหลัก: <span id="trump-suit-display" class="text-base font-bold">-</span>
-                </div>
-                <div class="font-bold text-blue-300">ทีม B (Seat 1,3): <span id="teamB-score" class="text-white text-sm">0</span></div>
-            </div>
-
-            <!-- ช่องเก็บไพ่คะแนนสะสม -->
-            <div class="grid grid-cols-2 gap-2 bg-green-950/90 p-2 rounded-xl border border-green-800">
-                <div class="flex items-center gap-1.5 overflow-x-auto min-h-[42px] px-1 border-r border-green-800">
-                    <span class="text-[10px] text-yellow-400 font-extrabold shrink-0">ไพ่ A:</span>
-                    <div id="teamA-captured-cards" class="flex items-center overflow-x-auto pl-1 py-1"></div>
-                </div>
-                <div class="flex items-center gap-1.5 overflow-x-auto min-h-[42px] px-1">
-                    <span class="text-[10px] text-blue-400 font-extrabold shrink-0">ไพ่ B:</span>
-                    <div id="teamB-captured-cards" class="flex items-center overflow-x-auto pl-1 py-1"></div>
-                </div>
-            </div>
-
-            <div id="game-status" class="text-[11px] font-semibold text-yellow-200 bg-green-950 px-2 py-0.5 rounded-lg border border-green-800 truncate text-center mt-1">
-                กำลังเตรียมความพร้อม...
-            </div>
-        </header>
-
-        <!-- Main Card Playing Field -->
-        <main class="flex-1 relative flex items-center justify-center p-2">
-            <!-- Top Player -->
-            <div class="absolute top-2 flex flex-col items-center">
-                <span id="pos-top-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
-                <div id="played-pos-top" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
-            </div>
-
-            <!-- Left Player -->
-            <div class="absolute left-2 flex flex-col items-center">
-                <span id="pos-left-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
-                <div id="played-pos-left" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
-            </div>
-
-            <!-- Right Player -->
-            <div class="absolute right-2 flex flex-col items-center">
-                <span id="pos-right-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
-                <div id="played-pos-right" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
-            </div>
-
-            <!-- Bottom Player -->
-            <div class="absolute bottom-2 flex flex-col items-center">
-                <div id="played-pos-bottom" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 mb-1"></div>
-                <span id="pos-bottom-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[90px] truncate">คุณ</span>
-            </div>
-        </main>
-
-        <!-- Controls Floating Panel -->
-        <section id="controls" class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-green-900/95 p-4 rounded-2xl text-center hidden z-30 shadow-2xl border-2 border-yellow-500/80 backdrop-blur-md">
-            <div id="bid-controls" class="hidden">
-                <p class="mb-2 font-bold text-sm text-yellow-300">เลือกคะแนนประมูล:</p>
-                <div id="bid-buttons-container" class="flex flex-wrap justify-center gap-2 mb-3"></div>
-                <button onclick="sendBid(0, true)" class="bg-red-600 active:bg-red-700 text-white px-5 py-1.5 rounded-full text-xs font-bold shadow">หมอบ / ผ่าน (Pass)</button>
-            </div>
-
-            <div id="trump-controls" class="hidden">
-                <p class="mb-2 font-bold text-sm text-yellow-300">🔥 ชนะประมูล! เลือกดอกหลักก่อนรับไพ่ 4 ใบ:</p>
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="sendTrump('♠')" class="bg-black text-white py-2 rounded-xl text-lg font-bold border border-gray-600">♠ โพดำ</button>
-                    <button onclick="sendTrump('♥️')" class="bg-red-600 text-white py-2 rounded-xl text-lg font-bold">♥️ โพแดง</button>
-                    <button onclick="sendTrump('♣')" class="bg-black text-white py-2 rounded-xl text-lg font-bold border border-gray-600">♣ ดอกจิก</button>
-                    <button onclick="sendTrump('♦️')" class="bg-red-600 text-white py-2 rounded-xl text-lg font-bold">♦️ ข้าวหลามตัด</button>
-                </div>
-            </div>
-
-            <div id="kitty-controls" class="hidden">
-                <p class="mb-2 text-xs font-bold text-red-300">ได้ไพ่กลางแล้ว! เลือกไพ่ 4 ใบลงใต้กอง (ห้ามเลือก A, 10, 5)</p>
-                <button id="confirm-discard-btn" onclick="sendDiscard()" class="bg-orange-600 text-white px-5 py-2 rounded-xl text-xs font-bold opacity-50 cursor-not-allowed w-full shadow" disabled>ยืนยันการทิ้งไพ่</button>
-            </div>
-
-            <div id="gameover-controls" class="hidden py-1">
-                <h3 id="winner-announcement" class="text-lg font-bold text-yellow-300 mb-3">🏆 ผลการแข่งขัน</h3>
-                <div class="flex flex-col gap-2">
-                    <button onclick="restartGame()" class="bg-green-500 active:bg-green-600 text-black font-bold py-2 rounded-xl text-xs shadow">🔄 เล่นอีกครั้ง (ห้องเดิม)</button>
-                    <button onclick="location.reload()" class="bg-gray-700 active:bg-gray-600 text-white font-bold py-2 rounded-xl text-xs shadow">🏠 กลับหน้าแรก</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Hand Deck Bottom Bar -->
-        <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10">
-            <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เรียกรวมตามดอก ♠ ♥️ ♣ ♦️):</div>
-            <div id="player-hand" class="hand-container min-h-[100px]"></div>
-        </footer>
-    </div>
-
-    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (ลากขยับได้ทั้งคู่) -->
-    <div id="chat-container" class="hidden">
-        <!-- ปุ่มเปิด/ปิด แชท (ลากขยับตำแหน่งได้) -->
-        <button id="toggle-chat-btn" class="fixed bottom-4 right-4 z-50 bg-yellow-500 text-black p-2.5 rounded-full shadow-lg font-bold text-xs flex items-center gap-1 active:scale-95 transition border border-yellow-300 cursor-move select-none">
-            ✋ 💬 แชท <span id="chat-badge" class="hidden bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5">ใหม่</span>
-        </button>
-
-        <!-- หน้าต่างแชท (ลากขยับตำแหน่งได้) -->
-        <div id="chat-box" class="fixed bottom-16 right-4 w-80 max-w-[90vw] h-80 bg-green-950/95 border-2 border-yellow-500 rounded-2xl shadow-2xl z-50 hidden flex-col overflow-hidden backdrop-blur-md">
-            <!-- แถบ Header กล่องแชท -->
-            <div id="chat-header" class="bg-green-900 p-2.5 border-b border-green-700 flex justify-between items-center cursor-move select-none active:bg-green-800">
-                <span class="font-bold text-xs text-yellow-300 flex items-center gap-1">✋ 💬 แชทกลาง (ลากได้)</span>
-                <button onclick="toggleChat()" class="text-gray-300 hover:text-white font-bold px-2">✕</button>
-            </div>
-            
-            <!-- กล่องแสดงข้อความ -->
-            <div id="chat-messages" class="flex-1 p-3 overflow-y-auto space-y-2 text-xs flex flex-col"></div>
-
-            <!-- ช่องกรอกข้อความ -->
-            <form onsubmit="sendChatMessage(event)" class="p-2 border-t border-green-800 flex gap-1 bg-green-900/80">
-                <input type="text" id="chat-input" placeholder="พิมพ์ข้อความ..." class="flex-1 bg-black/60 text-white text-xs px-3 py-1.5 rounded-xl border border-green-700 focus:outline-none focus:border-yellow-400">
-                <button type="submit" class="bg-yellow-500 active:bg-yellow-600 text-black font-bold text-xs px-3 py-1.5 rounded-xl transition">ส่ง</button>
-            </form>
+    <!-- Modal ประกาศผลเมื่อจบเกม -->
+    <div id="end-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="end-title" style="color: #f39c12; margin-bottom: 10px;">สรุปผลการแข่งขัน</h2>
+            <p id="end-detail" style="margin-bottom: 15px; font-size: 15px;"></p>
+            <button class="btn btn-primary" onclick="restartGame()">เล่นใหม่อีกครั้ง</button>
         </div>
     </div>
 
     <script>
         const socket = io();
         let mySeat = -1;
-        let myRoomId = '';
-        let myHand = [];
-        let selectedDiscardIndexes = [];
-        let currentRoomState = null;
-        let isChatOpen = false;
+        let currentRoomId = null;
+        let myHandData = [];
+        let selectedCardsForDiscard = [];
 
-        window.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomIdFromUrl = urlParams.get('room');
-            if (roomIdFromUrl) {
-                document.getElementById('roomIdInput').value = roomIdFromUrl;
-            }
-            
-            // ทำให้หน้าต่างแชทลากได้
-            makeElementDraggable(document.getElementById('chat-box'), document.getElementById('chat-header'));
-            
-            // ทำให้ปุ่มแชทลากได้ (พร้อมระบบแยกแยะการกดเพื่อเปิด/ปิดแชท)
-            makeBtnDraggable(document.getElementById('toggle-chat-btn'), toggleChat);
-        });
-
-        // -------------------------------------------------------------
-        // ฟังก์ชั่น Drag and Drop สำหรับองค์ประกอบทั่วไป (เช่น กล่องแชท)
-        // -------------------------------------------------------------
-        function makeElementDraggable(elmnt, header) {
-            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-
-            if (header) {
-                header.onmousedown = dragMouseDown;
-                header.ontouchstart = dragTouchStart;
-            }
-
-            function dragMouseDown(e) {
-                e = e || window.event;
-                e.preventDefault();
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                document.onmouseup = closeDragElement;
-                document.onmousemove = elementDrag;
-            }
-
-            function elementDrag(e) {
-                e = e || window.event;
-                e.preventDefault();
-                pos1 = pos3 - e.clientX;
-                pos2 = pos4 - e.clientY;
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto';
-                elmnt.style.right = 'auto';
-            }
-
-            function closeDragElement() {
-                document.onmouseup = null;
-                document.onmousemove = null;
-            }
-
-            function dragTouchStart(e) {
-                const touch = e.touches[0];
-                pos3 = touch.clientX;
-                pos4 = touch.clientY;
-                document.ontouchend = closeTouchDragElement;
-                document.ontouchmove = elementTouchDrag;
-            }
-
-            function elementTouchDrag(e) {
-                const touch = e.touches[0];
-                pos1 = pos3 - touch.clientX;
-                pos2 = pos4 - touch.clientY;
-                pos3 = touch.clientX;
-                pos4 = touch.clientY;
-                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto';
-                elmnt.style.right = 'auto';
-            }
-
-            function closeTouchDragElement() {
-                document.ontouchend = null;
-                document.ontouchmove = null;
-            }
-        }
-
-        // -------------------------------------------------------------
-        // ฟังก์ชั่น Drag and Drop แยกเฉพาะสำหรับ "ปุ่มกด" 
-        // (เพื่อแยกระหว่างการลากปุ่ม กับ การแตะกดปุ่ม)
-        // -------------------------------------------------------------
-        function makeBtnDraggable(elmnt, onClickCallback) {
-            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-            let isDragging = false;
-            let startX = 0, startY = 0;
-
-            elmnt.onmousedown = dragMouseDown;
-            elmnt.ontouchstart = dragTouchStart;
-
-            function dragMouseDown(e) {
-                e = e || window.event;
-                isDragging = false;
-                startX = e.clientX;
-                startY = e.clientY;
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                document.onmouseup = closeDragElement;
-                document.onmousemove = elementDrag;
-            }
-
-            function elementDrag(e) {
-                e = e || window.event;
-                if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
-                    isDragging = true;
-                }
-                pos1 = pos3 - e.clientX;
-                pos2 = pos4 - e.clientY;
-                pos3 = e.clientX;
-                pos4 = e.clientY;
-                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto';
-                elmnt.style.right = 'auto';
-            }
-
-            function closeDragElement() {
-                document.onmouseup = null;
-                document.onmousemove = null;
-                if (!isDragging && onClickCallback) {
-                    onClickCallback();
-                }
-            }
-
-            function dragTouchStart(e) {
-                const touch = e.touches[0];
-                isDragging = false;
-                startX = touch.clientX;
-                startY = touch.clientY;
-                pos3 = touch.clientX;
-                pos4 = touch.clientY;
-                document.ontouchend = closeTouchDragElement;
-                document.ontouchmove = elementTouchDrag;
-            }
-
-            function elementTouchDrag(e) {
-                const touch = e.touches[0];
-                if (Math.abs(touch.clientX - startX) > 5 || Math.abs(touch.clientY - startY) > 5) {
-                    isDragging = true;
-                }
-                pos1 = pos3 - touch.clientX;
-                pos2 = pos4 - touch.clientY;
-                pos3 = touch.clientX;
-                pos4 = touch.clientY;
-                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto';
-                elmnt.style.right = 'auto';
-            }
-
-            function closeTouchDragElement() {
-                document.ontouchend = null;
-                document.ontouchmove = null;
-                if (!isDragging && onClickCallback) {
-                    onClickCallback();
-                }
-            }
-        }
+        // Dynamic Elements
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const actionPanel = document.getElementById('action-panel');
+        const myHandContainer = document.getElementById('my-hand-container');
 
         function createRoom() {
-            const name = document.getElementById('playerName').value;
-            if(!name) return alert('กรอกชื่อก่อนครับ');
+            const name = document.getElementById('player-name-input').value || 'ผู้เล่น 1';
             socket.emit('createRoom', name);
         }
 
         function createSinglePlayer() {
-            const name = document.getElementById('playerName').value || "คุณ";
+            const name = document.getElementById('player-name-input').value || 'ผู้เล่น 1';
             socket.emit('createSinglePlayer', name);
         }
 
         function joinRoom() {
-            const name = document.getElementById('playerName').value;
-            const roomId = document.getElementById('roomIdInput').value;
-            if(!name || !roomId) return alert('กรอกชื่อและรหัสห้องให้ครบ');
+            const name = document.getElementById('player-name-input').value || 'ผู้เล่น';
+            const roomId = document.getElementById('room-id-input').value;
+            if (!roomId) return alert('กรุณากรอกรหัสห้อง');
             socket.emit('joinRoom', { roomId, playerName: name });
         }
 
-        function selectSeat(seatNumber) {
-            socket.emit('changeSeat', { roomId: myRoomId, targetSeat: seatNumber });
-        }
-
-        function fillAI() {
-            socket.emit('fillAI', { roomId: myRoomId });
-        }
-
-        function startGame() {
-            socket.emit('startGameReq', { roomId: myRoomId });
-        }
-
-        function restartGame() {
-            socket.emit('restartGameReq', { roomId: myRoomId });
-        }
-
-        function copyRoomLink() {
-            if (!myRoomId) return;
-            const shareUrl = `${window.location.origin}${window.location.pathname}?room=${myRoomId}`;
-            navigator.clipboard.writeText(shareUrl).then(() => {
-                alert('คัดลอกลิงก์เรียบร้อย!');
-            });
-        }
-
-        // ระบบแชท
-        function toggleChat() {
-            const chatBox = document.getElementById('chat-box');
-            isChatOpen = !isChatOpen;
-            if (isChatOpen) {
-                chatBox.classList.remove('hidden');
-                chatBox.classList.add('flex');
-                document.getElementById('chat-badge').classList.add('hidden');
-                const messagesDiv = document.getElementById('chat-messages');
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            } else {
-                chatBox.classList.add('hidden');
-                chatBox.classList.remove('flex');
-            }
-        }
-
-        function sendChatMessage(e) {
-            e.preventDefault();
-            const input = document.getElementById('chat-input');
-            const message = input.value.trim();
-            if (message && myRoomId) {
-                socket.emit('sendChatMessage', { roomId: myRoomId, message });
-                input.value = '';
-            }
-        }
-
-        socket.on('newChatMessage', (data) => {
-            const messagesDiv = document.getElementById('chat-messages');
-            const msgEl = document.createElement('div');
-            
-            if (data.isSystem) {
-                msgEl.className = 'text-[10px] text-yellow-300 italic text-center py-1 bg-black/20 rounded-lg';
-                msgEl.innerText = data.message;
-            } else {
-                const isMe = data.senderId === socket.id;
-                msgEl.className = `p-2 rounded-xl max-w-[85%] ${isMe ? 'bg-yellow-500 text-black self-end rounded-br-none' : 'bg-green-800 text-white self-start rounded-bl-none'}`;
-                msgEl.innerHTML = `
-                    <div class="text-[9px] font-bold ${isMe ? 'text-black/70' : 'text-yellow-400'}">${data.senderName}</div>
-                    <div class="break-words font-medium">${data.message}</div>
-                `;
-            }
-            
-            messagesDiv.appendChild(msgEl);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-            if (!isChatOpen && !data.isSystem) {
-                document.getElementById('chat-badge').classList.remove('hidden');
-            }
+        socket.on('roomCreated', ({ roomId, seat }) => {
+            mySeat = seat;
+            currentRoomId = roomId;
+            switchToGameScreen(roomId);
         });
+
+        socket.on('joinedSuccess', ({ roomId, seat }) => {
+            mySeat = seat;
+            currentRoomId = roomId;
+            switchToGameScreen(roomId);
+        });
+
+        function switchToGameScreen(roomId) {
+            lobbyScreen.classList.remove('active');
+            gameScreen.classList.add('active');
+            document.getElementById('display-room-id').innerText = roomId;
+        }
 
         socket.on('errorMessage', (msg) => alert(msg));
 
-        socket.on('roomCreated', (data) => {
-            myRoomId = data.roomId;
-            mySeat = data.seat;
-            showRoomLobby();
+        socket.on('updateRoom', (room) => {
+            updateSeatsDisplay(room);
+            if (room.seats[0] && room.seats[0].id === socket.id && room.gameState === 'LOBBY') {
+                document.getElementById('start-game-btn').style.display = 'block';
+                document.getElementById('fill-ai-btn').style.display = 'block';
+            } else {
+                document.getElementById('start-game-btn').style.display = 'none';
+                document.getElementById('fill-ai-btn').style.display = 'none';
+            }
         });
-
-        socket.on('joinedSuccess', (data) => {
-            myRoomId = data.roomId;
-            mySeat = data.seat;
-            showRoomLobby();
-        });
-
-        function showRoomLobby() {
-            document.getElementById('lobby').classList.add('hidden');
-            document.getElementById('room-lobby').classList.remove('hidden');
-            document.getElementById('room-lobby').classList.add('flex');
-            document.getElementById('room-code-display').innerText = myRoomId;
-            document.getElementById('chat-container').classList.remove('hidden');
-        }
 
         socket.on('yourHand', (hand) => {
-            myHand = hand;
-            renderHand();
-        });
-
-        socket.on('updateRoom', (room) => {
-            currentRoomState = room;
-            
-            for (let i = 0; i < 4; i++) {
-                const seatEl = document.getElementById(`seat-${i}`);
-                const player = room.seats[i];
-                if (player) {
-                    seatEl.innerText = `เก้าอี้ ${i}: ${player.name}`;
-                    seatEl.className = "p-2.5 bg-green-700 rounded-lg border border-yellow-400 font-bold mb-2 text-xs truncate";
-                } else {
-                    seatEl.innerText = `เก้าอี้ ${i}: ว่าง`;
-                    seatEl.className = "p-2.5 bg-green-950 rounded-lg border border-gray-700 text-xs truncate cursor-pointer hover:bg-green-800";
-                }
-            }
-
-            if (room.gameState !== 'LOBBY') {
-                document.getElementById('lobby').classList.add('hidden');
-                document.getElementById('room-lobby').classList.add('hidden');
-                document.getElementById('room-lobby').classList.remove('flex');
-                document.getElementById('game-board').classList.remove('hidden');
-                document.getElementById('chat-container').classList.remove('hidden');
-            }
+            myHandData = hand;
+            renderMyHand();
         });
 
         socket.on('updateGameState', (room) => {
-            currentRoomState = room;
+            document.getElementById('display-game-state').innerText = room.gameState;
+            document.getElementById('display-bid').innerText = room.highestBid;
+            
+            let bidderName = room.highestBidder !== -1 ? room.seats[room.highestBidder].name : '-';
+            document.getElementById('display-bidder').innerText = bidderName;
+            document.getElementById('display-trump').innerText = room.trumpSuit || '-';
 
-            let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
-            if (myCurrentPlayer) {
-                mySeat = myCurrentPlayer.seat;
-            }
+            document.getElementById('score-team-a').innerText = room.teamAScore;
+            document.getElementById('score-team-b').innerText = room.teamBScore;
 
-            if (room.gameState !== 'LOBBY') {
-                document.getElementById('lobby').classList.add('hidden');
-                document.getElementById('room-lobby').classList.add('hidden');
-                document.getElementById('room-lobby').classList.remove('flex');
-                document.getElementById('game-board').classList.remove('hidden');
-                document.getElementById('chat-container').classList.remove('hidden');
-            }
+            // แสดงรายการไพ่แต้มที่แต่ละทีมกินได้
+            document.getElementById('cards-team-a').innerText = 'ไพ่ที่กินได้: ' + (room.teamACapturedCards.map(c => c.suit + c.value).join(', ') || '-');
+            document.getElementById('cards-team-b').innerText = 'ไพ่ที่กินได้: ' + (room.teamBCapturedCards.map(c => c.suit + c.value).join(', ') || '-');
 
-            document.getElementById('teamA-score').innerText = room.teamAScore;
-            document.getElementById('teamB-score').innerText = room.teamBScore;
-            document.getElementById('bid-score-display').innerText = room.highestBid;
-            document.getElementById('trump-suit-display').innerText = room.trumpSuit || '-';
+            updateSeatsDisplay(room);
+            renderPlayedCards(room);
+            renderActionControls(room);
 
-            renderCapturedCards('teamA-captured-cards', room.teamACapturedCards || []);
-            renderCapturedCards('teamB-captured-cards', room.teamBCapturedCards || []);
-
-            const baseSeat = mySeat >= 0 ? mySeat : 0;
-            const positions = [
-                { seat: baseSeat, pos: 'bottom' },
-                { seat: (baseSeat + 1) % 4, pos: 'left' },
-                { seat: (baseSeat + 2) % 4, pos: 'top' },
-                { seat: (baseSeat + 3) % 4, pos: 'right' }
-            ];
-
-            positions.forEach(({ seat, pos }) => {
-                const player = room.seats[seat];
-                const card = room.currentRoundCards[seat];
-                
-                const nameEl = document.getElementById(`pos-${pos}-name`);
-                if (player) {
-                    nameEl.innerText = (pos === 'bottom') ? `คุณ (${player.name})` : player.name;
-                } else {
-                    nameEl.innerText = 'รอ...';
-                }
-
-                const cardEl = document.getElementById(`played-pos-${pos}`);
-                if (card) {
-                    const isRed = card.suit === '♥️' || card.suit === '♦️';
-                    const suitClass = isRed ? 'suit-red' : 'suit-black';
-                    cardEl.innerHTML = `
-                        <div class="w-14 h-20 bg-white rounded-lg p-1 border-2 border-yellow-400 shadow-lg flex flex-col justify-between relative overflow-hidden">
-                            <div class="text-xs font-black leading-none ${suitClass}">${card.value}</div>
-                            <div class="absolute inset-0 flex items-center justify-center text-3xl font-bold ${suitClass} opacity-90">${card.suit}</div>
-                            <div class="text-[10px] text-right font-black leading-none ${suitClass} self-end">${card.suit}</div>
-                        </div>
-                    `;
-                } else {
-                    cardEl.innerHTML = '';
-                    cardEl.className = "w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60";
-                }
-            });
-
-            const controls = document.getElementById('controls');
-            const bidControls = document.getElementById('bid-controls');
-            const kittyControls = document.getElementById('kitty-controls');
-            const trumpControls = document.getElementById('trump-controls');
-            const gameoverControls = document.getElementById('gameover-controls');
-
-            controls.classList.add('hidden');
-            bidControls.classList.add('hidden');
-            kittyControls.classList.add('hidden');
-            trumpControls.classList.add('hidden');
-            gameoverControls.classList.add('hidden');
-
-            if (room.gameState === 'BIDDING') {
-                document.getElementById('game-status').innerText = `ตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกประมูล`;
-                if (mySeat === room.bidTurn) {
-                    controls.classList.remove('hidden');
-                    bidControls.classList.remove('hidden');
-                    renderBidButtons(room.highestBid);
-                }
-            } else if (room.gameState === 'SELECT_TRUMP') {
-                document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกหลัก...`;
-                if (mySeat === room.dealer) {
-                    controls.classList.remove('hidden');
-                    trumpControls.classList.remove('hidden');
-                }
-            } else if (room.gameState === 'KITTY_DISCARD') {
-                document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) กำลังเลือกฝังไพ่ 4 ใบ...`;
-                if (mySeat === room.dealer) {
-                    controls.classList.remove('hidden');
-                    kittyControls.classList.remove('hidden');
-                }
-            } else if (room.gameState === 'PLAYING') {
-                let playedCount = room.currentRoundCards.filter(c => c !== null).length;
-                let currentTurn = (room.starterPlayer + playedCount) % 4;
-                
-                let leadSuitInfo = "";
-                if (playedCount > 0) {
-                    let leadCard = room.currentRoundCards[room.starterPlayer];
-                    leadSuitInfo = ` | บังคับออก: ${leadCard.suit}`;
-                }
-
-                document.getElementById('game-status').innerText = `ตา P${currentTurn} (${room.seats[currentTurn].name}) ออกไพ่${leadSuitInfo}`;
-            } else if (room.gameState === 'END') {
-                controls.classList.remove('hidden');
-                gameoverControls.classList.remove('hidden');
-
-                let dealerTeamIsA = (room.dealer === 0 || room.dealer === 2);
-                let dealerScoreNeeded = room.highestBid;
-                let dealerTeamScore = dealerTeamIsA ? room.teamAScore : room.teamBScore;
-                
-                let isWinner = dealerTeamScore >= dealerScoreNeeded;
-                let winningTeamName = isWinner 
-                    ? (dealerTeamIsA ? 'ทีม A' : 'ทีม B') 
-                    : (dealerTeamIsA ? 'ทีม B' : 'ทีม A');
-
-                document.getElementById('winner-announcement').innerText = `🎉 ${winningTeamName} ชนะ! (${dealerTeamScore}/${dealerScoreNeeded})`;
-                document.getElementById('game-status').innerText = `จบเกมแล้ว! 🎉`;
+            if (room.gameState === 'END') {
+                showEndModal(room);
             }
         });
 
-        function renderCapturedCards(elementId, cards) {
-            const container = document.getElementById(elementId);
-            container.innerHTML = '';
-            if (cards.length === 0) {
-                container.innerHTML = '<span class="text-[10px] text-gray-400 italic">ไม่มีไพ่แต้ม</span>';
-                return;
-            }
-            cards.forEach(card => {
-                const isRed = card.suit === '♥️' || card.suit === '♦️';
-                const suitClass = isRed ? 'suit-red' : 'suit-black';
-                const cardEl = document.createElement('div');
-                cardEl.className = 'point-card-mini';
-                cardEl.innerHTML = `
-                    <span class="${suitClass} font-black text-[11px] leading-none mb-[1px]">${card.value}</span>
-                    <span class="${suitClass} text-[10px] font-bold leading-none">${card.suit}</span>
-                `;
-                container.appendChild(cardEl);
-            });
-        }
+        function updateSeatsDisplay(room) {
+            for (let i = 0; i < 4; i++) {
+                // คำนวณ UI Index ให้ผู้เล่นปัจจุบันอยู่อย่างถูกต้อง
+                let uiIndex = (i - mySeat + 4) % 4;
+                let tagElem = document.getElementById(`player-tag-${uiIndex}`);
+                let player = room.seats[i];
 
-        function renderHand() {
-            const handDiv = document.getElementById('player-hand');
-            handDiv.innerHTML = '';
-            myHand.forEach((card, index) => {
-                const cardEl = document.createElement('div');
-                const isSelected = selectedDiscardIndexes.includes(index);
-                const isRed = card.suit === '♥️' || card.suit === '♦️';
-                const suitClass = isRed ? 'suit-red' : 'suit-black';
-
-                cardEl.className = `card-item border ${isSelected ? 'selected-card' : 'border-gray-300'}`;
-                cardEl.innerHTML = `
-                    <div class="flex justify-between items-start leading-none">
-                        <span class="text-xs font-black ${suitClass}">${card.value}</span>
-                        <span class="text-[10px] font-bold ${suitClass}">${card.suit}</span>
-                    </div>
-                    <div class="text-center text-2xl font-black ${suitClass} my-auto drop-shadow-sm">
-                        ${card.suit}
-                    </div>
-                    <div class="text-[10px] font-black ${suitClass} text-right leading-none">
-                        ${card.value}
-                    </div>
-                `;
-                cardEl.onclick = () => onCardClick(index);
-                handDiv.appendChild(cardEl);
-            });
-        }
-
-        function onCardClick(index) {
-            if (!currentRoomState) return;
-
-            if (currentRoomState.gameState === 'KITTY_DISCARD' && mySeat === currentRoomState.dealer) {
-                const card = myHand[index];
-                if (['A', '10', '5'].includes(card.value)) return alert('ห้ามทิ้งไพ่มีแต้ม (5, 10, A)!');
-                
-                if (selectedDiscardIndexes.includes(index)) {
-                    selectedDiscardIndexes = selectedDiscardIndexes.filter(i => i !== index);
-                } else if (selectedDiscardIndexes.length < 4) {
-                    selectedDiscardIndexes.push(index);
-                }
-                renderHand();
-                
-                const btn = document.getElementById('confirm-discard-btn');
-                if (selectedDiscardIndexes.length === 4) {
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                if (player) {
+                    tagElem.innerText = `${player.name} ${player.isAI ? '🤖' : ''}`;
+                    if (room.gameState === 'BIDDING' && room.bidTurn === i) {
+                        tagElem.classList.add('active-turn');
+                    } else if (room.gameState === 'PLAYING' && getCurrentTurnClient(room) === i) {
+                        tagElem.classList.add('active-turn');
+                    } else {
+                        tagElem.classList.remove('active-turn');
+                    }
                 } else {
-                    btn.disabled = true;
-                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    tagElem.innerText = `เก้าอี้ว่าง (คลิกเพื่อนั่ง)`;
+                    tagElem.onclick = () => socket.emit('changeSeat', { roomId: currentRoomId, targetSeat: i });
+                    tagElem.classList.remove('active-turn');
                 }
-            } else if (currentRoomState.gameState === 'PLAYING') {
-                socket.emit('playCard', { roomId: myRoomId, cardIndex: index });
             }
         }
 
-        function renderBidButtons(currentHighest) {
-            const container = document.getElementById('bid-buttons-container');
-            container.innerHTML = '';
+        function getCurrentTurnClient(room) {
+            let playedCount = room.currentRoundCards.filter(c => c !== null).length;
+            return (room.starterPlayer + playedCount) % 4;
+        }
 
-            let minBid = currentHighest === 60 ? 65 : currentHighest + 5;
+        function renderPlayedCards(room) {
+            for (let i = 0; i < 4; i++) {
+                let uiIndex = (i - mySeat + 4) % 4;
+                let slotElem = document.getElementById(`slot-${uiIndex}`);
+                slotElem.innerHTML = '';
 
-            for (let bid = minBid; bid <= 100; bid += 5) {
-                const btn = document.createElement('button');
-                btn.className = "bg-blue-600 active:bg-blue-700 text-white font-bold py-1.5 px-3 rounded-xl text-xs shadow hover:bg-blue-500 transition";
-                btn.innerText = `${bid}`;
-                btn.onclick = () => sendBid(bid, false);
-                container.appendChild(btn);
+                let card = room.currentRoundCards[i];
+                if (card) {
+                    let cardElem = createCardUI(card);
+                    slotElem.appendChild(cardElem);
+                }
             }
         }
 
-        function sendBid(bidValue, isPass) {
-            socket.emit('submitBid', { roomId: myRoomId, bidValue, isPass });
+        function renderMyHand() {
+            myHandContainer.innerHTML = '';
+            myHandData.forEach((card, index) => {
+                let cardElem = createCardUI(card);
+                if (selectedCardsForDiscard.includes(index)) {
+                    cardElem.classList.add('selected');
+                }
+                cardElem.onclick = () => onHandCardClick(index);
+                myHandContainer.appendChild(cardElem);
+            });
         }
 
-        function sendTrump(suit) {
-            socket.emit('selectTrump', { roomId: myRoomId, suit });
+        function createCardUI(card) {
+            let div = document.createElement('div');
+            let isRed = card.suit === '♥️' || card.suit === '♦️';
+            div.className = `card ${isRed ? 'red' : ''}`;
+            div.innerHTML = `
+                <div>${card.value}</div>
+                <div style="align-self: center; font-size: 20px;">${card.suit}</div>
+                <div style="align-self: flex-end;">${card.value}</div>
+            `;
+            return div;
         }
 
-        function sendDiscard() {
-            socket.emit('confirmDiscard', { roomId: myRoomId, discardIndexes: selectedDiscardIndexes });
-            selectedDiscardIndexes = [];
+        function renderActionControls(room) {
+            actionPanel.style.display = 'none';
+            actionPanel.innerHTML = '';
+
+            if (room.gameState === 'BIDDING' && room.bidTurn === mySeat) {
+                actionPanel.style.display = 'flex';
+                let nextBid = room.highestBid + 5;
+                actionPanel.innerHTML = `
+                    <button class="btn btn-primary" onclick="submitBid(${nextBid}, false)">หมอบเสนอ ${nextBid}</button>
+                    <button class="btn btn-danger" onclick="submitBid(0, true)">ผ่าน (Pass)</button>
+                `;
+            } else if (room.gameState === 'SELECT_TRUMP' && room.dealer === mySeat) {
+                actionPanel.style.display = 'flex';
+                ['♠', '♥️', '♣', '♦️'].forEach(suit => {
+                    let btn = document.createElement('button');
+                    btn.className = 'btn btn-secondary';
+                    btn.style.padding = '8px 15px';
+                    btn.innerText = suit;
+                    btn.onclick = () => socket.emit('selectTrump', { roomId: currentRoomId, suit });
+                    actionPanel.appendChild(btn);
+                });
+            } else if (room.gameState === 'KITTY_DISCARD' && room.dealer === mySeat) {
+                actionPanel.style.display = 'flex';
+                actionPanel.innerHTML = `
+                    <button class="btn btn-primary" onclick="confirmDiscard()">ทิ้งไพ่ในมือลง Kitty (${selectedCardsForDiscard.length}/4)</button>
+                `;
+            }
+        }
+
+        function onHandCardClick(index) {
+            if (document.getElementById('display-game-state').innerText === 'KITTY_DISCARD') {
+                if (selectedCardsForDiscard.includes(index)) {
+                    selectedCardsForDiscard = selectedCardsForDiscard.filter(i => i !== index);
+                } else if (selectedCardsForDiscard.length < 4) {
+                    selectedCardsForDiscard.push(index);
+                }
+                renderMyHand();
+            } else if (document.getElementById('display-game-state').innerText === 'PLAYING') {
+                socket.emit('playCard', { roomId: currentRoomId, cardIndex: index });
+            }
+        }
+
+        function submitBid(bidValue, isPass) {
+            socket.emit('submitBid', { roomId: currentRoomId, bidValue, isPass });
+        }
+
+        function confirmDiscard() {
+            if (selectedCardsForDiscard.length !== 4) {
+                return alert('กรุณาเลือกไพ่ให้ครบ 4 ใบเพื่อเก็บลง Kitty');
+            }
+            socket.emit('confirmDiscard', { roomId: currentRoomId, discardIndexes: selectedCardsForDiscard });
+            selectedCardsForDiscard = [];
+        }
+
+        function requestStartGame() {
+            socket.emit('startGameReq', { roomId: currentRoomId });
+        }
+
+        function fillAI() {
+            socket.emit('fillAI', { roomId: currentRoomId });
+        }
+
+        function restartGame() {
+            document.getElementById('end-modal').style.display = 'none';
+            socket.emit('restartGameReq', { roomId: currentRoomId });
+        }
+
+        function showEndModal(room) {
+            let modal = document.getElementById('end-modal');
+            let title = document.getElementById('end-title');
+            let detail = document.getElementById('end-detail');
+
+            let dealerTeamScore = (room.dealer === 0 || room.dealer === 2) ? room.teamAScore : room.teamBScore;
+            let isTargetMet = dealerTeamScore >= room.highestBid;
+
+            if (isTargetMet) {
+                title.innerText = '🎉 ฝ่ายเสนอชนะการแข่งขัน!';
+                detail.innerText = `ทีมผู้เสนอทำได้ ${dealerTeamScore} แต้ม (เป้าหมาย: ${room.highestBid} แต้ม)`;
+            } else {
+                title.innerText = '💥 ฝ่ายเสนอแพ้ (ทำแต้มไม่ถึง)!';
+                detail.innerText = `ทีมผู้เสนอทำได้เพียง ${dealerTeamScore} แต้ม (เป้าหมาย: ${room.highestBid} แต้ม)`;
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        // Chat Handlers
+        socket.on('newChatMessage', (data) => {
+            const container = document.getElementById('messages-container');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `msg ${data.isSystem ? 'sys' : ''}`;
+            msgDiv.innerText = `${data.senderName}: ${data.message}`;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+        });
+
+        function sendChat() {
+            const input = document.getElementById('chat-input-field');
+            if (!input.value.trim()) return;
+            socket.emit('sendChatMessage', { roomId: currentRoomId, message: input.value });
+            input.value = '';
+        }
+
+        function handleChatKeyPress(e) {
+            if (e.key === 'Enter') sendChat();
         }
     </script>
 </body>
