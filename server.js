@@ -178,7 +178,7 @@ function getSmartAIBestCard(room, botSeat) {
         if (tableInfo.winningSeat !== partnerSeat) {
             if (!validCards.some(c => c.suit === leadSuit)) {
                 const trumpCards = validCards.filter(c => isTrump(c) && getPower(c, leadSuit) > tableInfo.maxPower)
-                    .sort((a,b) => CARD_RANK_VALUES[a.value] - CARD_RANK_VALUES[b.value]);
+                    .sort((a,b) => CARD_RANK_VALUES[a.value] - CARD_RANK_VALUES[a.value]);
                 if (trumpCards.length > 0) return trumpCards[0];
             }
         }
@@ -229,8 +229,6 @@ function getSmartAIBestCard(room, botSeat) {
 // 🃏 GAME ENGINE & ROOM MANAGEMENT
 // ==========================================
 
-const rooms = {};
-
 function createDeck() {
     const suits = ['♠', '♥️', '♣', '♦️'];
     const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -252,47 +250,79 @@ function calculateCardPoints(cards) {
     return score;
 }
 
+const rooms = {};
+
 function processTurn(room) {
     if (room.gameState === 'BIDDING') {
+        // นับจำนวนผู้เล่นที่ยังไม่หมอบ (ยังอยู่ในประมูล)
+        const activeBiddersCount = room.passedBidders.filter(passed => !passed).length;
+
+        // ถ้าเหลือคนสู้ประมูลแค่คนเดียว และมีคนประมูลขึ้นมาจาก 60 แล้ว -> ได้ผู้ชนะประมูล
+        if (activeBiddersCount === 1 && room.highestBid > 60) {
+            const winnerSeat = room.passedBidders.findIndex(passed => !passed);
+            room.dealer = winnerSeat;
+            room.gameState = 'SELECT_TRUMP';
+            io.to(room.id).emit('newChatMessage', { isSystem: true, message: `🏆 ${room.seats[winnerSeat].name} ชนะการประมูลที่แต้ม ${room.highestBid}` });
+            io.emit('updateGameState', room);
+            processTurn(room);
+            return;
+        }
+
+        // ถ้าวนรอบครบทุกคนแล้ว แต่ไม่มีใครยอมสู้ประมูลเลย (ทุกลำดับหมอบหมด) -> ให้คนแรกเปิดที่ 60
+        if (activeBiddersCount === 0 || (activeBiddersCount === 1 && room.highestBid === 60 && room.passedBidders[room.bidTurn])) {
+            room.dealer = 0;
+            room.highestBid = 60;
+            room.gameState = 'SELECT_TRUMP';
+            io.to(room.id).emit('newChatMessage', { isSystem: true, message: `🏆 ไม่มีใครสู้ประมูล ${room.seats[0].name} ได้เป็นเจ้ามือที่ 60 แต้ม` });
+            io.emit('updateGameState', room);
+            processTurn(room);
+            return;
+        }
+
+        // ข้ามคนที่หมอบไปแล้ว
+        while (room.passedBidders[room.bidTurn]) {
+            room.bidTurn = (room.bidTurn + 1) % 4;
+        }
+
         const currentBot = room.seats[room.bidTurn];
         if (currentBot && currentBot.isAI) {
             setTimeout(() => {
-                // บอทสุ่มประมูลหรือผ่านตามจังหวะ
-                if (room.highestBid < 75 && Math.random() > 0.4) {
+                // ประเมินกำลังไพ่บอท
+                const acesCount = currentBot.hand.filter(c => c.value === 'A').length;
+                const canBid = (room.highestBid < 75 && acesCount >= 2) || (room.highestBid === 60 && Math.random() > 0.4);
+
+                if (canBid) {
                     const nextBid = room.highestBid === 60 ? 65 : room.highestBid + 5;
                     room.highestBid = nextBid;
                     room.dealer = room.bidTurn;
                     io.to(room.id).emit('newChatMessage', { isSystem: true, message: `🤖 ${currentBot.name} สู้ประมูลที่ ${nextBid}` });
                 } else {
+                    room.passedBidders[room.bidTurn] = true;
                     io.to(room.id).emit('newChatMessage', { isSystem: true, message: `🤖 ${currentBot.name} หมอบ` });
                 }
 
-                let nextTurn = (room.bidTurn + 1) % 4;
-                let activeBidders = room.seats.filter(s => s !== null);
-                
-                // สลับตาประมูล
-                room.bidTurn = nextTurn;
-                
-                // ตรวจสอบจบช่วงประมูล
-                if (room.highestBid > 60 && Math.random() > 0.6) {
-                    room.gameState = 'SELECT_TRUMP';
-                    io.emit('updateGameState', room);
-                    processTurn(room);
-                    return;
-                }
-                
+                room.bidTurn = (room.bidTurn + 1) % 4;
                 io.emit('updateGameState', room);
                 processTurn(room);
-            }, 1000);
+            }, 800);
         }
     } else if (room.gameState === 'SELECT_TRUMP') {
         const dealerBot = room.seats[room.dealer];
         if (dealerBot && dealerBot.isAI) {
             setTimeout(() => {
-                const suits = ['♠', '♥️', '♣', '♦️'];
-                room.trumpSuit = suits[Math.floor(Math.random() * suits.length)];
-                
-                // แจกไพ่กลาง 4 ใบให้ผู้ชนะประมูล
+                // บอทเลือกดอกที่มีมากที่สุดในมือเป็นดอกหลัก
+                const suitCounts = { '♠': 0, '♥️': 0, '♣': 0, '♦️': 0 };
+                dealerBot.hand.forEach(c => suitCounts[c.suit]++);
+                let bestSuit = '♠';
+                let maxCount = -1;
+                for (let s in suitCounts) {
+                    if (suitCounts[s] > maxCount) {
+                        maxCount = suitCounts[s];
+                        bestSuit = s;
+                    }
+                }
+
+                room.trumpSuit = bestSuit;
                 dealerBot.hand.push(...room.kitty);
                 room.kitty = [];
                 
@@ -300,23 +330,26 @@ function processTurn(room) {
                 io.emit('updateGameState', room);
                 io.to(dealerBot.id).emit('yourHand', dealerBot.hand);
                 processTurn(room);
-            }, 1000);
+            }, 800);
         }
     } else if (room.gameState === 'KITTY_DISCARD') {
         const dealerBot = room.seats[room.dealer];
         if (dealerBot && dealerBot.isAI) {
             setTimeout(() => {
-                // เลือกฝังไพ่ที่ไม่ใช่ 5, 10, A
-                const safeCards = dealerBot.hand.filter(c => !['5', '10', 'A'].includes(c.value));
                 const discardIndexes = [];
-                
+                // ทิ้งไพ่เล็กๆ ที่ไม่ใช่แต้ม 5, 10, A
                 for (let i = 0; i < dealerBot.hand.length && discardIndexes.length < 4; i++) {
                     if (!['5', '10', 'A'].includes(dealerBot.hand[i].value)) {
                         discardIndexes.push(i);
                     }
                 }
+                // ถ้ายังไม่ครบ 4 ใบ ยอมทิ้งไพ่รองลงมา
+                for (let i = 0; i < dealerBot.hand.length && discardIndexes.length < 4; i++) {
+                    if (!discardIndexes.includes(i) && dealerBot.hand[i].value !== 'A') {
+                        discardIndexes.push(i);
+                    }
+                }
 
-                // ดึงไพ่ออกจากมือบอท
                 discardIndexes.sort((a,b) => b - a).forEach(idx => {
                     dealerBot.hand.splice(idx, 1);
                 });
@@ -325,12 +358,11 @@ function processTurn(room) {
                 room.starterPlayer = room.dealer;
                 io.emit('updateGameState', room);
                 processTurn(room);
-            }, 1000);
+            }, 800);
         }
     } else if (room.gameState === 'PLAYING') {
         let playedCount = room.currentRoundCards.filter(c => c !== null).length;
         if (playedCount === 4) {
-            // จบรอบ 4 ใบ คำนวณหาผู้ชนะรอบนี้
             setTimeout(() => {
                 const leadCard = room.currentRoundCards[room.starterPlayer];
                 let winnerSeat = room.starterPlayer;
@@ -347,7 +379,6 @@ function processTurn(room) {
                     }
                 });
 
-                // ย้ายไพ่สะสมแต้มเข้าทีมผู้ชนะ
                 const roundPointsCards = room.currentRoundCards.filter(c => ['5', '10', 'K'].includes(c.value));
                 if (winnerSeat === 0 || winnerSeat === 2) {
                     room.teamACapturedCards.push(...roundPointsCards);
@@ -360,14 +391,13 @@ function processTurn(room) {
                 room.currentRoundCards = [null, null, null, null];
                 room.starterPlayer = winnerSeat;
 
-                // เช็คว่าไพ่หมดมือจบเกมหรือยัง
                 if (room.seats[0].hand.length === 0) {
                     room.gameState = 'END';
                 }
 
                 io.emit('updateGameState', room);
                 processTurn(room);
-            }, 1500);
+            }, 1200);
             return;
         }
 
@@ -382,12 +412,11 @@ function processTurn(room) {
                 const playedCard = currentBot.hand.splice(cardIndex, 1)[0];
                 room.currentRoundCards[currentTurn] = playedCard;
 
-                // บันทึกความจำ AI
                 recordCardPlayed(room, currentTurn, playedCard);
 
                 io.emit('updateGameState', room);
                 processTurn(room);
-            }, 1000);
+            }, 800);
         }
     }
 }
@@ -411,6 +440,7 @@ io.on('connection', (socket) => {
             ],
             bidTurn: 0,
             highestBid: 60,
+            passedBidders: [false, false, false, false],
             dealer: 0,
             trumpSuit: null,
             kitty: [],
@@ -441,6 +471,7 @@ io.on('connection', (socket) => {
             ],
             bidTurn: 0,
             highestBid: 60,
+            passedBidders: [false, false, false, false],
             dealer: 0,
             trumpSuit: null,
             kitty: [],
@@ -507,6 +538,7 @@ io.on('connection', (socket) => {
         room.gameState = 'BIDDING';
         room.highestBid = 60;
         room.bidTurn = 0;
+        room.passedBidders = [false, false, false, false];
         room.teamAScore = 0;
         room.teamBScore = 0;
         room.teamACapturedCards = [];
@@ -514,7 +546,6 @@ io.on('connection', (socket) => {
         room.playedCardsHistory = [];
         room.voidSuits = {};
 
-        // ส่งไพ่ให้ผู้เล่นมนุษย์ทุกคน
         room.seats.forEach(p => {
             if (p && !p.isAI) {
                 io.to(p.id).emit('yourHand', p.hand);
@@ -537,15 +568,11 @@ io.on('connection', (socket) => {
             room.dealer = player.seat;
             io.to(roomId).emit('newChatMessage', { isSystem: true, message: `💬 ${player.name} สู้ประมูลที่ ${bidValue}` });
         } else {
+            room.passedBidders[player.seat] = true;
             io.to(roomId).emit('newChatMessage', { isSystem: true, message: `💬 ${player.name} หมอบ` });
         }
 
         room.bidTurn = (room.bidTurn + 1) % 4;
-
-        if (room.highestBid > 60 && Math.random() > 0.5) {
-            room.gameState = 'SELECT_TRUMP';
-        }
-
         io.to(roomId).emit('updateGameState', room);
         processTurn(room);
     });
@@ -599,7 +626,6 @@ io.on('connection', (socket) => {
         const playedCard = player.hand.splice(cardIndex, 1)[0];
         room.currentRoundCards[currentTurn] = playedCard;
 
-        // บันทึกความจำเกม
         recordCardPlayed(room, currentTurn, playedCard);
 
         socket.emit('yourHand', player.hand);
@@ -625,7 +651,6 @@ io.on('connection', (socket) => {
         const room = rooms[roomId];
         if (!room) return;
         
-        // รีเซ็ตเกมเพื่อเล่นรอบใหม่
         const deck = createDeck();
         room.seats.forEach(p => {
             if (p) p.hand = deck.splice(0, 12);
@@ -635,6 +660,7 @@ io.on('connection', (socket) => {
         room.gameState = 'BIDDING';
         room.highestBid = 60;
         room.bidTurn = 0;
+        room.passedBidders = [false, false, false, false];
         room.teamAScore = 0;
         room.teamBScore = 0;
         room.teamACapturedCards = [];
