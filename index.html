@@ -69,8 +69,8 @@
         .point-card-mini:first-child {
             margin-left: 0;
         }
-        /* กำหนดสไตล์ป้องกันไม่ให้ติดการซูมหรือการเลื่อนของหน้าจอเวลานิ้วลากแชท */
-        #chat-box {
+        /* กำหนด touch-action เพื่อป้องกันการติดเลื่อน/ซูมหน้าจอเวลาใช้นิ้วลาก */
+        #chat-box, #toggle-chat-btn {
             touch-action: none;
         }
     </style>
@@ -225,16 +225,16 @@
         </footer>
     </div>
 
-    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (รองรับการใช้นิ้วลากขยับตำแหน่งได้) -->
+    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (ลากขยับได้ทั้งคู่) -->
     <div id="chat-container" class="hidden">
-        <!-- ปุ่มเปิด/ปิด แชท float ด้านล่างขวา -->
-        <button id="toggle-chat-btn" onclick="toggleChat()" class="fixed bottom-4 right-4 z-50 bg-yellow-500 text-black p-2.5 rounded-full shadow-lg font-bold text-xs flex items-center gap-1 active:scale-95 transition border border-yellow-300">
-            💬 แชท <span id="chat-badge" class="hidden bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5">ใหม่</span>
+        <!-- ปุ่มเปิด/ปิด แชท (ลากขยับตำแหน่งได้) -->
+        <button id="toggle-chat-btn" class="fixed bottom-4 right-4 z-50 bg-yellow-500 text-black p-2.5 rounded-full shadow-lg font-bold text-xs flex items-center gap-1 active:scale-95 transition border border-yellow-300 cursor-move select-none">
+            ✋ 💬 แชท <span id="chat-badge" class="hidden bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5">ใหม่</span>
         </button>
 
-        <!-- หน้าต่างแชท (ใช้นิ้วแตะที่แถบหัวข้อเพื่อลากขยับตำแหน่งได้) -->
+        <!-- หน้าต่างแชท (ลากขยับตำแหน่งได้) -->
         <div id="chat-box" class="fixed bottom-16 right-4 w-80 max-w-[90vw] h-80 bg-green-950/95 border-2 border-yellow-500 rounded-2xl shadow-2xl z-50 hidden flex-col overflow-hidden backdrop-blur-md">
-            <!-- แถบ Header ที่สามารถใช้นิ้วลาก/ดึงได้ -->
+            <!-- แถบ Header กล่องแชท -->
             <div id="chat-header" class="bg-green-900 p-2.5 border-b border-green-700 flex justify-between items-center cursor-move select-none active:bg-green-800">
                 <span class="font-bold text-xs text-yellow-300 flex items-center gap-1">✋ 💬 แชทกลาง (ลากได้)</span>
                 <button onclick="toggleChat()" class="text-gray-300 hover:text-white font-bold px-2">✕</button>
@@ -266,11 +266,16 @@
             if (roomIdFromUrl) {
                 document.getElementById('roomIdInput').value = roomIdFromUrl;
             }
+            
+            // ทำให้หน้าต่างแชทลากได้
             makeElementDraggable(document.getElementById('chat-box'), document.getElementById('chat-header'));
+            
+            // ทำให้ปุ่มแชทลากได้ (พร้อมระบบแยกแยะการกดเพื่อเปิด/ปิดแชท)
+            makeBtnDraggable(document.getElementById('toggle-chat-btn'), toggleChat);
         });
 
         // -------------------------------------------------------------
-        // ระบบลากขยับหน้าต่างแชท (Drag and Drop Support for Touch & Mouse)
+        // ฟังก์ชั่น Drag and Drop สำหรับองค์ประกอบทั่วไป (เช่น กล่องแชท)
         // -------------------------------------------------------------
         function makeElementDraggable(elmnt, header) {
             let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -330,6 +335,87 @@
             function closeTouchDragElement() {
                 document.ontouchend = null;
                 document.ontouchmove = null;
+            }
+        }
+
+        // -------------------------------------------------------------
+        // ฟังก์ชั่น Drag and Drop แยกเฉพาะสำหรับ "ปุ่มกด" 
+        // (เพื่อแยกระหว่างการลากปุ่ม กับ การแตะกดปุ่ม)
+        // -------------------------------------------------------------
+        function makeBtnDraggable(elmnt, onClickCallback) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            let isDragging = false;
+            let startX = 0, startY = 0;
+
+            elmnt.onmousedown = dragMouseDown;
+            elmnt.ontouchstart = dragTouchStart;
+
+            function dragMouseDown(e) {
+                e = e || window.event;
+                isDragging = false;
+                startX = e.clientX;
+                startY = e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e = e || window.event;
+                if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
+                    isDragging = true;
+                }
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+                if (!isDragging && onClickCallback) {
+                    onClickCallback();
+                }
+            }
+
+            function dragTouchStart(e) {
+                const touch = e.touches[0];
+                isDragging = false;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                document.ontouchend = closeTouchDragElement;
+                document.ontouchmove = elementTouchDrag;
+            }
+
+            function elementTouchDrag(e) {
+                const touch = e.touches[0];
+                if (Math.abs(touch.clientX - startX) > 5 || Math.abs(touch.clientY - startY) > 5) {
+                    isDragging = true;
+                }
+                pos1 = pos3 - touch.clientX;
+                pos2 = pos4 - touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
+            }
+
+            function closeTouchDragElement() {
+                document.ontouchend = null;
+                document.ontouchmove = null;
+                if (!isDragging && onClickCallback) {
+                    onClickCallback();
+                }
             }
         }
 
