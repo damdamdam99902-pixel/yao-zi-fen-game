@@ -72,7 +72,8 @@ function createRoomObject(roomId) {
         starterPlayer: -1,
         currentRoundCards: [null, null, null, null],
         roundCount: 0,
-        playedHistory: [] // บันทึกประวัติไพ่ที่ออกไปแล้วในเกมนี้
+        playedHistory: [], // ประวัติไพ่ที่ลงสนามแล้ว
+        voidSuits: { 0: [], 1: [], 2: [], 3: [] } // ตรวจสอบว่าผู้เล่นคนไหนไม่มีไพ่ดอกไหนแล้ว
     };
 }
 
@@ -107,7 +108,7 @@ io.on('connection', (socket) => {
         
         io.to(roomId).emit('newChatMessage', {
             senderName: 'ระบบ',
-            message: `🤖 เริ่มเกมโหมดโม่กับบอทแล้ว`,
+            message: `🤖 เริ่มเกมโหมดเล่นกับบอทแล้ว`,
             isSystem: true
         });
     });
@@ -276,6 +277,7 @@ function startNewGame(room) {
     room.roundCount = 0;
     room.currentRoundCards = [null, null, null, null];
     room.playedHistory = [];
+    room.voidSuits = { 0: [], 1: [], 2: [], 3: [] };
 
     for (let i = 0; i < 4; i++) {
         room.hands[i] = room.deck.splice(0, 12).sort(sortCards);
@@ -310,6 +312,10 @@ function executePlayCard(room, seatIndex, cardIndex) {
         let hasLeadSuit = hand.some(c => c.suit === leadCard.suit);
         if (hasLeadSuit && card.suit !== leadCard.suit) {
             return;
+        }
+        // หากไม่มีไพ่ดอกเดียวกับคนแรก แสดงว่าผู้เล่นคนนี้หมดดอกนั้นแล้ว (Void Suit)
+        if (!hasLeadSuit && !room.voidSuits[seatIndex].includes(leadCard.suit)) {
+            room.voidSuits[seatIndex].push(leadCard.suit);
         }
     }
 
@@ -410,19 +416,23 @@ function getSmartAICardIndex(room, seatIndex) {
     let trumpSuit = room.trumpSuit;
     let dealerSeat = room.dealer;
 
+    let partnerSeat = (seatIndex + 2) % 4;
+    let isPartnerDealer = (partnerSeat === dealerSeat);
+    let isDealerTeam = (seatIndex === dealerSeat || isPartnerDealer);
+
     let playedCount = playedCards.filter(c => c !== null).length;
     let leadCard = playedCount > 0 ? playedCards[starter] : null;
 
-    // หาไพ่ที่สามารถออกตามกฎบังคับออกตามดอกแรก (Follow Suit)
+    // หาไพ่ที่ออกได้ตามกฎบังคับออกดอกเดียวกันก่อน
     let validCards = [];
     if (leadCard) {
         validCards = hand.map((card, idx) => ({ card, idx })).filter(item => item.card.suit === leadCard.suit);
     }
     if (validCards.length === 0) {
-        validCards = hand.map((card, idx) => ({ card, idx })); // หากไม่มีดอกตาม ออกไพ่ใบไหนก็ได้
+        validCards = hand.map((card, idx) => ({ card, idx })); // ถ้าไม่มีดอกตาม ทิ้งใบไหนก็ได้
     }
 
-    // เช็กว่าไพ่ใบนึ้เป็นไพ่ที่ใหญ่ที่สุดในดอกนั้นๆ ที่ยังเหลืออยู่ในเกมหรือไม่
+    // ตรวจสอบว่าไพ่ใบนึ้ใหญ่ที่สุดในดอกนั้นๆ ที่ยังเหลืออยู่ในเกมหรือไม่ (นับไพ่ที่ออกไปแล้ว)
     const isHighestRemainingInSuit = (card) => {
         let ranks = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
         for (let r of ranks) {
@@ -437,7 +447,7 @@ function getSmartAICardIndex(room, seatIndex) {
         return true;
     };
 
-    // เช็กว่าใครชนะไพ่ในรอบนี้ชั่วคราว
+    // หาคนที่มีโอกาสชนะไพ่ในรอบนี้ชั่วคราว
     const getWinningSeatSoFar = () => {
         let winSeat = starter;
         let winCard = playedCards[starter];
@@ -455,7 +465,7 @@ function getSmartAICardIndex(room, seatIndex) {
         return winSeat;
     };
 
-    // เปรียบเทียบขนาดไพ่ 2 ใบ
+    // เปรียบเทียบความใหญ่ของไพ่ 2 ใบ
     const isCardBigger = (cardA, cardB) => {
         if (!cardB) return true;
         if (cardA.suit === cardB.suit) {
@@ -475,32 +485,55 @@ function getSmartAICardIndex(room, seatIndex) {
     // 1. กรณีออกไพ่คนแรก (P1)
     // -------------------------------------------------------------
     if (playedCount === 0) {
-        // หากมี A ให้ออก A ไปก่อน
-        let aces = validCards.filter(item => item.card.value === 'A');
-        if (aces.length > 0) {
-            return aces[0].idx;
-        }
+        
+        // กฎพิเศษ: หากเจ้ามือไม่มีไพ่ดอกไหน กักไพ่ A, 10, 5 ดอกนั้นไว้ก่อน
+        let safeValidCards = validCards.filter(item => {
+            if (['A', '10', '5'].includes(item.card.value)) {
+                let oppSeats = [ (seatIndex + 1) % 4, (seatIndex + 3) % 4 ];
+                let oppIsDealerNoSuit = oppSeats.some(s => s === dealerSeat && room.voidSuits[s].includes(item.card.suit));
+                if (oppIsDealerNoSuit) return false;
+            }
+            return true;
+        });
 
-        // หากไม่มี A สุ่มตาม 2 ตัวเลือก
-        let option = Math.floor(Math.random() * 2) + 1;
+        let targetCards = safeValidCards.length > 0 ? safeValidCards : validCards;
 
-        if (option === 1) {
-            // ตัวเลือกที่ 1: เล็กสุดที่เป็นดอกหลัก (ไม่ใช่ 10, 5)
-            let trumpNonPoints = nonPointCards.filter(item => item.card.suit === trumpSuit);
-            if (trumpNonPoints.length > 0) {
-                trumpNonPoints.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
-                return trumpNonPoints[0].idx;
+        if (isPartnerDealer) {
+            // เพื่อนเป็นเจ้ามือ: ออกใหญ่สุด เช่น A ก่อน
+            let aces = targetCards.filter(item => item.card.value === 'A');
+            if (aces.length > 0) return aces[0].idx;
+
+            // หากไม่มี A สุ่มตาม 2 ตัวเลือก
+            let option = Math.floor(Math.random() * 2) + 1;
+            if (option === 1) {
+                // ตัวเลือกที่ 1: ดอกหลักเล็กๆ (หลบ 10, 5)
+                let trumpNonPoints = nonPointCards.filter(item => item.card.suit === trumpSuit);
+                if (trumpNonPoints.length > 0) {
+                    trumpNonPoints.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
+                    return trumpNonPoints[0].idx;
+                }
+            }
+
+            // ตัวเลือกที่ 2 (หรือสำรองจาก 1): ใหญ่ที่สุดที่ไม่ใช่ดอกหลัก (หลบ 10, 5)
+            let nonTrumpNonPoints = nonPointCards.filter(item => item.card.suit !== trumpSuit);
+            if (nonTrumpNonPoints.length > 0) {
+                nonTrumpNonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
+                return nonTrumpNonPoints[0].idx;
+            }
+        } else {
+            // ทีมตรงข้ามเป็นเจ้ามือ: ออกใหญ่สุด A ก่อน
+            let aces = targetCards.filter(item => item.card.value === 'A');
+            if (aces.length > 0) return aces[0].idx;
+
+            // ไม่มี A ให้ออกใหญ่สุด (หลบ 10, 5 หรือดอกที่เจ้ามือไม่มี)
+            let safeNonPoints = nonPointCards.filter(item => !room.voidSuits[dealerSeat].includes(item.card.suit));
+            if (safeNonPoints.length > 0) {
+                safeNonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
+                return safeNonPoints[0].idx;
             }
         }
 
-        // ตัวเลือกที่ 2 (หรือสำรองจากแบบที่ 1): ใหญ่ที่สุดที่ไม่ใช่ดอกหลัก (ไม่ใช่ 10, 5)
-        let nonTrumpNonPoints = nonPointCards.filter(item => item.card.suit !== trumpSuit);
-        if (nonTrumpNonPoints.length > 0) {
-            nonTrumpNonPoints.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
-            return nonTrumpNonPoints[0].idx;
-        }
-
-        // หากไม่เหลือไพ่อื่น ให้ยอมออกไพ่คะแนน (5 ก่อน 10)
+        // หากไม่มีทางเลือกอื่น ทิ้งไพ่ 5 ก่อน 10
         let fives = pointCards.filter(item => item.card.value === '5');
         if (fives.length > 0) return fives[0].idx;
         if (pointCards.length > 0) return pointCards[0].idx;
@@ -522,11 +555,11 @@ function getSmartAICardIndex(room, seatIndex) {
                 nonPointWinners.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
                 return nonPointWinners[0].idx;
             }
-            // หากไม่มีใบอื่น ค่อยออก 10 หรือ 5
+            // ไม่มีใบอื่น ค่อยออก 10 หรือ 5
             winningChoices.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
             return winningChoices[0].idx;
         } else {
-            // หากใหญ่ไม่เท่า P1 ให้ออกใบเล็กที่สุดแทน (หลบไพ่แต้มก่อน)
+            // ใหญ่ไม่เท่า P1 ให้ออกเล็กสุดแทน (เลี่ยงไพ่แต้ม)
             if (nonPointCards.length > 0) {
                 nonPointCards.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
                 return nonPointCards[0].idx;
@@ -546,23 +579,23 @@ function getSmartAICardIndex(room, seatIndex) {
         let p2Card = playedCards[p2Seat];
         let currentWinnerSeat = getWinningSeatSoFar();
 
-        // ทริคเพิ่มเติม: คนแรกออก A โพแดง แล้ว P2 สู้ด้วย 10 โพดำ (ตัดดอกหลัก)
+        // ทริคพิเศษ: P1 ออก A โพแดง แล้ว P2 สู้ด้วย 10 โพดำ (ตัดดอกหลัก)
         if (leadCard && p2Card.suit === trumpSuit && p1Card.suit !== trumpSuit) {
             let hasLeadSuit = hand.some(c => c.suit === leadCard.suit);
             if (hasLeadSuit) {
-                // ถ้าเรายังมีดอกตาม (โพแดง) ให้ทิ้งไพ่เล็กที่ไม่ใช่แต้ม
+                // ยังมีดอกตาม (โพแดง) ให้ทิ้งไพ่เล็กหลบแต้ม
                 if (nonPointCards.length > 0) {
                     nonPointCards.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
                     return nonPointCards[0].idx;
                 }
             } else {
-                // ถ้าไม่มีดอกตาม และมีดอกหลัก (โพดำ) ให้ฆ่าด้วยโพดำที่ใหญ่กว่า P2
+                // ไม่มีดอกตาม ถ้ามีดอกหลัก (โพดำ) ที่ใหญ่กว่า P2 ให้ฆ่าเลย
                 let biggerTrumps = validCards.filter(item => item.card.suit === trumpSuit && CARD_RANKS[item.card.value] > CARD_RANKS[p2Card.value]);
                 if (biggerTrumps.length > 0) {
                     biggerTrumps.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
                     return biggerTrumps[0].idx;
                 } else {
-                    // ถ้าไม่มีโพดำใหญ่กว่า ให้เก็บดอกหลักไว้ ออกไพ่เล็กดอกอื่นแทน
+                    // ไม่มีโพดำใหญ่กว่า ให้เก็บดอกหลักไว้ ออกไพ่เล็กดอกอื่นแทน
                     let nonTrumpSmall = validCards.filter(item => item.card.suit !== trumpSuit);
                     if (nonTrumpSmall.length > 0) {
                         nonTrumpSmall.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
@@ -572,17 +605,17 @@ function getSmartAICardIndex(room, seatIndex) {
             }
         }
 
-        // กฎปกติ P3: เช็กว่าไพ่ P1 ใหญ่ที่สุดหรือยัง
+        // กฎปกติ P3: เช็กว่า P1 ใหญ่สุดหรือยัง
         let isP1Highest = isHighestRemainingInSuit(p1Card) && currentWinnerSeat === starter;
         if (isP1Highest) {
-            // ถ้าเพื่อนใหญ่สุดแล้ว ส่งแต้ม 10, 5 ให้เพื่อน
+            // เพื่อนชนะ ยัดไพ่คะแนน 10, 5
             if (pointCards.length > 0) {
                 pointCards.sort((a, b) => calculateCardScore(b.card) - calculateCardScore(a.card));
                 return pointCards[0].idx;
             }
         }
 
-        // หาก P1 ไม่ใช่ไพ่ใหญ่ที่สุด ให้พยายามออกไพ่ใหญ่ที่สุดสู้
+        // หาก P1 ไม่ใช่ไพ่ใหญ่ที่สุด พยายามออกไพ่ใหญ่สุดสู้
         let currentBest = playedCards[currentWinnerSeat];
         let winningChoices = validCards.filter(item => isCardBigger(item.card, currentBest));
 
@@ -613,14 +646,14 @@ function getSmartAICardIndex(room, seatIndex) {
         let isP2Winning = (currentWinnerSeat === p2Seat) || (isHighestRemainingInSuit(p2Card) && isCardBigger(p2Card, playedCards[starter]));
 
         if (isP2Winning) {
-            // เพื่อนชนะ ยัดแต้ม 10, 5
+            // เพื่อนชนะ ยัดไพ่คะแนน 10, 5
             if (pointCards.length > 0) {
                 pointCards.sort((a, b) => calculateCardScore(b.card) - calculateCardScore(a.card));
                 return pointCards[0].idx;
             }
         }
 
-        // ถ้าเพื่อนไม่ชนะ พยายามออกไพ่ใหญ่ที่สุดชนะโต๊ะ
+        // ถ้าเพื่อนไม่ชนะ พยายามออกไพ่ใหญ่สุดชนะโต๊ะ
         let currentBest = playedCards[currentWinnerSeat];
         let winningChoices = validCards.filter(item => isCardBigger(item.card, currentBest));
 
