@@ -69,6 +69,10 @@
         .point-card-mini:first-child {
             margin-left: 0;
         }
+        /* กำหนดสไตล์ป้องกันไม่ให้ติดการซูมหรือการเลื่อนของหน้าจอเวลานิ้วลากแชท */
+        #chat-box {
+            touch-action: none;
+        }
     </style>
 </head>
 <body class="bg-green-950 text-white h-screen flex flex-col font-sans overflow-hidden">
@@ -221,17 +225,18 @@
         </footer>
     </div>
 
-    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (Chat Window) -->
+    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (รองรับการใช้นิ้วลากขยับตำแหน่งได้) -->
     <div id="chat-container" class="hidden">
         <!-- ปุ่มเปิด/ปิด แชท float ด้านล่างขวา -->
         <button id="toggle-chat-btn" onclick="toggleChat()" class="fixed bottom-4 right-4 z-50 bg-yellow-500 text-black p-2.5 rounded-full shadow-lg font-bold text-xs flex items-center gap-1 active:scale-95 transition border border-yellow-300">
             💬 แชท <span id="chat-badge" class="hidden bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5">ใหม่</span>
         </button>
 
-        <!-- หน้าต่างแชท ลอยอยู่เหนือปุ่มแชท -->
+        <!-- หน้าต่างแชท (ใช้นิ้วแตะที่แถบหัวข้อเพื่อลากขยับตำแหน่งได้) -->
         <div id="chat-box" class="fixed bottom-16 right-4 w-80 max-w-[90vw] h-80 bg-green-950/95 border-2 border-yellow-500 rounded-2xl shadow-2xl z-50 hidden flex-col overflow-hidden backdrop-blur-md">
-            <div class="bg-green-900 p-2.5 border-b border-green-700 flex justify-between items-center">
-                <span class="font-bold text-xs text-yellow-300 flex items-center gap-1">💬 แชทกลางประจำห้อง</span>
+            <!-- แถบ Header ที่สามารถใช้นิ้วลาก/ดึงได้ -->
+            <div id="chat-header" class="bg-green-900 p-2.5 border-b border-green-700 flex justify-between items-center cursor-move select-none active:bg-green-800">
+                <span class="font-bold text-xs text-yellow-300 flex items-center gap-1">✋ 💬 แชทกลาง (ลากได้)</span>
                 <button onclick="toggleChat()" class="text-gray-300 hover:text-white font-bold px-2">✕</button>
             </div>
             
@@ -261,7 +266,72 @@
             if (roomIdFromUrl) {
                 document.getElementById('roomIdInput').value = roomIdFromUrl;
             }
+            makeElementDraggable(document.getElementById('chat-box'), document.getElementById('chat-header'));
         });
+
+        // -------------------------------------------------------------
+        // ระบบลากขยับหน้าต่างแชท (Drag and Drop Support for Touch & Mouse)
+        // -------------------------------------------------------------
+        function makeElementDraggable(elmnt, header) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+            if (header) {
+                header.onmousedown = dragMouseDown;
+                header.ontouchstart = dragTouchStart;
+            }
+
+            function dragMouseDown(e) {
+                e = e || window.event;
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e = e || window.event;
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+
+            function dragTouchStart(e) {
+                const touch = e.touches[0];
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                document.ontouchend = closeTouchDragElement;
+                document.ontouchmove = elementTouchDrag;
+            }
+
+            function elementTouchDrag(e) {
+                const touch = e.touches[0];
+                pos1 = pos3 - touch.clientX;
+                pos2 = pos4 - touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
+                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
+            }
+
+            function closeTouchDragElement() {
+                document.ontouchend = null;
+                document.ontouchmove = null;
+            }
+        }
 
         function createRoom() {
             const name = document.getElementById('playerName').value;
