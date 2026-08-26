@@ -43,8 +43,12 @@
             border: 2.5px solid #ef4444 !important;
             box-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
         }
-        .suit-red { color: #dc2626; }
-        .suit-black { color: #0f172a; }
+        .suit-red {
+            color: #dc2626;
+        }
+        .suit-black {
+            color: #0f172a;
+        }
         .point-card-mini {
             width: 26px;
             height: 36px;
@@ -62,8 +66,13 @@
             flex-shrink: 0;
             border: 1px solid #94a3b8;
         }
-        .point-card-mini:first-child { margin-left: 0; }
-        #chat-box, #toggle-chat-btn { touch-action: none; }
+        .point-card-mini:first-child {
+            margin-left: 0;
+        }
+        /* กำหนด touch-action เพื่อป้องกันการติดเลื่อน/ซูมหน้าจอเวลาใช้นิ้วลาก */
+        #chat-box, #toggle-chat-btn {
+            touch-action: none;
+        }
     </style>
 </head>
 <body class="bg-green-950 text-white h-screen flex flex-col font-sans overflow-hidden">
@@ -76,36 +85,43 @@
         </div>
         <div class="bg-green-900/90 p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center border border-green-700 backdrop-blur-sm">
             <input type="text" id="playerName" placeholder="กรอกชื่อของคุณ" class="w-full p-3 mb-4 text-black bg-white rounded-xl font-bold text-center outline-none border-2 border-yellow-500 focus:ring-2 focus:ring-yellow-400">
+            
             <button onclick="createSinglePlayer()" class="w-full bg-purple-600 active:bg-purple-700 text-white font-bold py-3 rounded-xl mb-3 shadow-md transition">🤖 เล่นกับ บอท AI</button>
             <button onclick="createRoom()" class="w-full bg-yellow-500 active:bg-yellow-600 text-black font-bold py-3 rounded-xl mb-3 shadow-md transition">👥 สร้างห้องเล่นกับเพื่อน</button>
+            
             <div class="relative flex py-2 items-center">
                 <div class="flex-grow border-t border-green-700"></div>
                 <span class="flex-shrink mx-2 text-xs text-green-400">หรือเข้าร่วม</span>
                 <div class="flex-grow border-t border-green-700"></div>
             </div>
+
             <input type="text" id="roomIdInput" placeholder="รหัสห้อง 4 หลัก" class="w-full p-3 mb-3 text-black bg-white rounded-xl font-bold text-center outline-none">
             <button onclick="joinRoom()" class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition">เข้าห้องเพื่อน</button>
         </div>
     </div>
 
-    <!-- หน้าเลือกที่นั่ง & เตรียมตัว -->
+    <!-- หน้าเลือกที่นั่ง & เตรียมตัว (Room Lobby) -->
     <div id="room-lobby" class="flex-1 p-4 max-w-md mx-auto hidden flex-col justify-center items-center w-full">
         <div class="bg-green-900/90 p-5 rounded-2xl border border-green-700 w-full text-center shadow-2xl">
             <h2 class="text-xl font-bold mb-1 text-yellow-300">ห้องพักรอ - รหัส: <span id="room-code-display" class="text-white underline"></span></h2>
             <button onclick="copyRoomLink()" class="mb-4 bg-yellow-500 active:bg-yellow-400 text-black text-xs px-3 py-1.5 rounded-full font-bold shadow">📋 ก๊อปปี้ลิงก์ชวนเพื่อน</button>
+
             <p class="text-xs text-gray-300 mb-3">แตะเลือกที่นั่ง (ทีม A: 0+2 | ทีม B: 1+3)</p>
+
             <div class="grid grid-cols-2 gap-3 mb-5">
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-yellow-500/50">
                     <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A (Seat 0 & 2)</h3>
                     <div id="seat-0" onclick="selectSeat(0)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 0: ว่าง</div>
                     <div id="seat-2" onclick="selectSeat(2)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 2: ว่าง</div>
                 </div>
+
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-blue-500/50">
                     <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B (Seat 1 & 3)</h3>
                     <div id="seat-1" onclick="selectSeat(1)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 1: ว่าง</div>
                     <div id="seat-3" onclick="selectSeat(3)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 3: ว่าง</div>
                 </div>
             </div>
+
             <div class="flex gap-2">
                 <button id="fill-ai-btn" onclick="fillAI()" class="flex-1 bg-purple-600 active:bg-purple-700 text-white font-bold py-2.5 text-xs rounded-xl shadow">🤖 เติม AI</button>
                 <button id="start-game-btn" onclick="startGame()" class="flex-1 bg-green-600 active:bg-green-700 text-white font-bold py-2.5 text-xs rounded-xl shadow">🚀 เริ่มเกม</button>
@@ -138,14 +154,8 @@
                 </div>
             </div>
 
-            <div class="flex items-center justify-between mt-1 gap-2">
-                <div id="game-status" class="flex-1 text-[11px] font-semibold text-yellow-200 bg-green-950 px-2 py-1 rounded-lg border border-green-800 truncate text-center">
-                    กำลังเตรียมความพร้อม...
-                </div>
-                <!-- ตัวนับถอยหลัง 15 วินาที -->
-                <div id="timer-display" class="bg-red-950 border border-red-500 text-red-400 text-xs font-black px-2 py-1 rounded-lg shrink-0 hidden">
-                    ⏱️ <span id="timer-sec">15</span>s
-                </div>
+            <div id="game-status" class="text-[11px] font-semibold text-yellow-200 bg-green-950 px-2 py-0.5 rounded-lg border border-green-800 truncate text-center mt-1">
+                กำลังเตรียมความพร้อม...
             </div>
         </header>
 
@@ -153,26 +163,26 @@
         <main class="flex-1 relative flex items-center justify-center p-2">
             <!-- Top Player -->
             <div class="absolute top-2 flex flex-col items-center">
-                <span id="pos-top-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[120px] truncate">ผู้เล่น</span>
+                <span id="pos-top-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
                 <div id="played-pos-top" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
             </div>
 
             <!-- Left Player -->
             <div class="absolute left-2 flex flex-col items-center">
-                <span id="pos-left-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[120px] truncate">ผู้เล่น</span>
+                <span id="pos-left-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
                 <div id="played-pos-left" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
             </div>
 
             <!-- Right Player -->
             <div class="absolute right-2 flex flex-col items-center">
-                <span id="pos-right-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[120px] truncate">ผู้เล่น</span>
+                <span id="pos-right-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-gray-300 mb-1 max-w-[90px] truncate">ผู้เล่น</span>
                 <div id="played-pos-right" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60"></div>
             </div>
 
-            <!-- Bottom Player (คุณ) -->
+            <!-- Bottom Player -->
             <div class="absolute bottom-2 flex flex-col items-center">
                 <div id="played-pos-bottom" class="w-14 h-20 border border-dashed border-gray-600 rounded-lg flex items-center justify-center bg-green-900/60 mb-1"></div>
-                <span id="pos-bottom-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[120px] truncate">คุณ</span>
+                <span id="pos-bottom-name" class="text-[10px] bg-black/50 px-2 py-0.5 rounded-full text-yellow-400 font-bold max-w-[90px] truncate">คุณ</span>
             </div>
         </main>
 
@@ -209,30 +219,31 @@
         </section>
 
         <!-- Hand Deck Bottom Bar -->
-        <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10 flex flex-col items-center">
-            <div class="flex justify-between items-center w-full px-4 mb-1">
-                <span class="text-[10px] text-gray-300 font-semibold">ไพ่ในมือของคุณ (เรียกรวมตามดอก ♠ ♥️ ♣ ♦️):</span>
-                <!-- ปุ่มสลับบอทเล่นแทน -->
-                <button id="auto-bot-btn" onclick="toggleAutoBot()" class="bg-purple-600 text-white text-[11px] px-2.5 py-1 rounded-lg font-bold shadow active:scale-95 transition border border-purple-400">
-                    🤖 เปิดบอทเล่นแทน
-                </button>
-            </div>
-            <div id="player-hand" class="hand-container min-h-[100px] w-full"></div>
+        <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10">
+            <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เรียกรวมตามดอก ♠ ♥️ ♣ ♦️):</div>
+            <div id="player-hand" class="hand-container min-h-[100px]"></div>
         </footer>
     </div>
 
-    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม -->
+    <!-- ปุ่มเปิดแชท + หน้าต่างแชทรวม (ลากขยับได้ทั้งคู่) -->
     <div id="chat-container" class="hidden">
+        <!-- ปุ่มเปิด/ปิด แชท (ลากขยับตำแหน่งได้) -->
         <button id="toggle-chat-btn" class="fixed bottom-4 right-4 z-50 bg-yellow-500 text-black p-2.5 rounded-full shadow-lg font-bold text-xs flex items-center gap-1 active:scale-95 transition border border-yellow-300 cursor-move select-none">
             ✋ 💬 แชท <span id="chat-badge" class="hidden bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5">ใหม่</span>
         </button>
 
+        <!-- หน้าต่างแชท (ลากขยับตำแหน่งได้) -->
         <div id="chat-box" class="fixed bottom-16 right-4 w-80 max-w-[90vw] h-80 bg-green-950/95 border-2 border-yellow-500 rounded-2xl shadow-2xl z-50 hidden flex-col overflow-hidden backdrop-blur-md">
+            <!-- แถบ Header กล่องแชท -->
             <div id="chat-header" class="bg-green-900 p-2.5 border-b border-green-700 flex justify-between items-center cursor-move select-none active:bg-green-800">
                 <span class="font-bold text-xs text-yellow-300 flex items-center gap-1">✋ 💬 แชทกลาง (ลากได้)</span>
                 <button onclick="toggleChat()" class="text-gray-300 hover:text-white font-bold px-2">✕</button>
             </div>
+            
+            <!-- กล่องแสดงข้อความ -->
             <div id="chat-messages" class="flex-1 p-3 overflow-y-auto space-y-2 text-xs flex flex-col"></div>
+
+            <!-- ช่องกรอกข้อความ -->
             <form onsubmit="sendChatMessage(event)" class="p-2 border-t border-green-800 flex gap-1 bg-green-900/80">
                 <input type="text" id="chat-input" placeholder="พิมพ์ข้อความ..." class="flex-1 bg-black/60 text-white text-xs px-3 py-1.5 rounded-xl border border-green-700 focus:outline-none focus:border-yellow-400">
                 <button type="submit" class="bg-yellow-500 active:bg-yellow-600 text-black font-bold text-xs px-3 py-1.5 rounded-xl transition">ส่ง</button>
@@ -241,7 +252,7 @@
     </div>
 
     <script>
-        const socket = io({ reconnection: true });
+        const socket = io();
         let mySeat = -1;
         let myRoomId = '';
         let myHand = [];
@@ -249,114 +260,162 @@
         let currentRoomState = null;
         let isChatOpen = false;
 
-        // แก้ปัญหา iOS สลับแอพแล้วค้าง (Visibility change sync)
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                if (!socket.connected) socket.connect();
-                if (myRoomId) {
-                    socket.emit('syncGameState', { roomId: myRoomId });
-                }
-            }
-        });
-
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const roomIdFromUrl = urlParams.get('room');
             if (roomIdFromUrl) {
                 document.getElementById('roomIdInput').value = roomIdFromUrl;
             }
+            
+            // ทำให้หน้าต่างแชทลากได้
             makeElementDraggable(document.getElementById('chat-box'), document.getElementById('chat-header'));
+            
+            // ทำให้ปุ่มแชทลากได้ (พร้อมระบบแยกแยะการกดเพื่อเปิด/ปิดแชท)
             makeBtnDraggable(document.getElementById('toggle-chat-btn'), toggleChat);
         });
 
+        // -------------------------------------------------------------
+        // ฟังก์ชั่น Drag and Drop สำหรับองค์ประกอบทั่วไป (เช่น กล่องแชท)
+        // -------------------------------------------------------------
         function makeElementDraggable(elmnt, header) {
             let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
             if (header) {
                 header.onmousedown = dragMouseDown;
                 header.ontouchstart = dragTouchStart;
             }
+
             function dragMouseDown(e) {
                 e = e || window.event;
                 e.preventDefault();
-                pos3 = e.clientX; pos4 = e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
                 document.onmouseup = closeDragElement;
                 document.onmousemove = elementDrag;
             }
+
             function elementDrag(e) {
                 e = e || window.event;
                 e.preventDefault();
-                pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-                pos3 = e.clientX; pos4 = e.clientY;
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
                 elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
                 elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto'; elmnt.style.right = 'auto';
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
             }
-            function closeDragElement() { document.onmouseup = null; document.onmousemove = null; }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+
             function dragTouchStart(e) {
                 const touch = e.touches[0];
-                pos3 = touch.clientX; pos4 = touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
                 document.ontouchend = closeTouchDragElement;
                 document.ontouchmove = elementTouchDrag;
             }
+
             function elementTouchDrag(e) {
                 const touch = e.touches[0];
-                pos1 = pos3 - touch.clientX; pos2 = pos4 - touch.clientY;
-                pos3 = touch.clientX; pos4 = touch.clientY;
+                pos1 = pos3 - touch.clientX;
+                pos2 = pos4 - touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
                 elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
                 elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto'; elmnt.style.right = 'auto';
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
             }
-            function closeTouchDragElement() { document.ontouchend = null; document.ontouchmove = null; }
+
+            function closeTouchDragElement() {
+                document.ontouchend = null;
+                document.ontouchmove = null;
+            }
         }
 
+        // -------------------------------------------------------------
+        // ฟังก์ชั่น Drag and Drop แยกเฉพาะสำหรับ "ปุ่มกด" 
+        // (เพื่อแยกระหว่างการลากปุ่ม กับ การแตะกดปุ่ม)
+        // -------------------------------------------------------------
         function makeBtnDraggable(elmnt, onClickCallback) {
             let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
             let isDragging = false;
             let startX = 0, startY = 0;
+
             elmnt.onmousedown = dragMouseDown;
             elmnt.ontouchstart = dragTouchStart;
 
             function dragMouseDown(e) {
                 e = e || window.event;
                 isDragging = false;
-                startX = e.clientX; startY = e.clientY;
-                pos3 = e.clientX; pos4 = e.clientY;
+                startX = e.clientX;
+                startY = e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
                 document.onmouseup = closeDragElement;
                 document.onmousemove = elementDrag;
             }
+
             function elementDrag(e) {
                 e = e || window.event;
-                if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) isDragging = true;
-                pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-                pos3 = e.clientX; pos4 = e.clientY;
+                if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
+                    isDragging = true;
+                }
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
                 elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
                 elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto'; elmnt.style.right = 'auto';
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
             }
+
             function closeDragElement() {
-                document.onmouseup = null; document.onmousemove = null;
-                if (!isDragging && onClickCallback) onClickCallback();
+                document.onmouseup = null;
+                document.onmousemove = null;
+                if (!isDragging && onClickCallback) {
+                    onClickCallback();
+                }
             }
+
             function dragTouchStart(e) {
                 const touch = e.touches[0];
                 isDragging = false;
-                startX = touch.clientX; startY = touch.clientY;
-                pos3 = touch.clientX; pos4 = touch.clientY;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
                 document.ontouchend = closeTouchDragElement;
                 document.ontouchmove = elementTouchDrag;
             }
+
             function elementTouchDrag(e) {
                 const touch = e.touches[0];
-                if (Math.abs(touch.clientX - startX) > 5 || Math.abs(touch.clientY - startY) > 5) isDragging = true;
-                pos1 = pos3 - touch.clientX; pos2 = pos4 - touch.clientY;
-                pos3 = touch.clientX; pos4 = touch.clientY;
+                if (Math.abs(touch.clientX - startX) > 5 || Math.abs(touch.clientY - startY) > 5) {
+                    isDragging = true;
+                }
+                pos1 = pos3 - touch.clientX;
+                pos2 = pos4 - touch.clientY;
+                pos3 = touch.clientX;
+                pos4 = touch.clientY;
                 elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
                 elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-                elmnt.style.bottom = 'auto'; elmnt.style.right = 'auto';
+                elmnt.style.bottom = 'auto';
+                elmnt.style.right = 'auto';
             }
+
             function closeTouchDragElement() {
-                document.ontouchend = null; document.ontouchmove = null;
-                if (!isDragging && onClickCallback) onClickCallback();
+                document.ontouchend = null;
+                document.ontouchmove = null;
+                if (!isDragging && onClickCallback) {
+                    onClickCallback();
+                }
             }
         }
 
@@ -394,16 +453,15 @@
             socket.emit('restartGameReq', { roomId: myRoomId });
         }
 
-        function toggleAutoBot() {
-            socket.emit('toggleAutoBot', { roomId: myRoomId });
-        }
-
         function copyRoomLink() {
             if (!myRoomId) return;
             const shareUrl = `${window.location.origin}${window.location.pathname}?room=${myRoomId}`;
-            navigator.clipboard.writeText(shareUrl).then(() => alert('คัดลอกลิงก์เรียบร้อย!'));
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert('คัดลอกลิงก์เรียบร้อย!');
+            });
         }
 
+        // ระบบแชท
         function toggleChat() {
             const chatBox = document.getElementById('chat-box');
             isChatOpen = !isChatOpen;
@@ -432,6 +490,7 @@
         socket.on('newChatMessage', (data) => {
             const messagesDiv = document.getElementById('chat-messages');
             const msgEl = document.createElement('div');
+            
             if (data.isSystem) {
                 msgEl.className = 'text-[10px] text-yellow-300 italic text-center py-1 bg-black/20 rounded-lg';
                 msgEl.innerText = data.message;
@@ -443,8 +502,10 @@
                     <div class="break-words font-medium">${data.message}</div>
                 `;
             }
+            
             messagesDiv.appendChild(msgEl);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
             if (!isChatOpen && !data.isSystem) {
                 document.getElementById('chat-badge').classList.remove('hidden');
             }
@@ -477,20 +538,9 @@
             renderHand();
         });
 
-        // อัปเดตตัวนับถอยหลัง 15 วินาที
-        socket.on('timerTick', ({ timeLeft, currentTurn }) => {
-            const timerEl = document.getElementById('timer-display');
-            const secEl = document.getElementById('timer-sec');
-            if (timeLeft !== undefined && timeLeft >= 0) {
-                timerEl.classList.remove('hidden');
-                secEl.innerText = timeLeft;
-            } else {
-                timerEl.classList.add('hidden');
-            }
-        });
-
         socket.on('updateRoom', (room) => {
             currentRoomState = room;
+            
             for (let i = 0; i < 4; i++) {
                 const seatEl = document.getElementById(`seat-${i}`);
                 const player = room.seats[i];
@@ -502,6 +552,7 @@
                     seatEl.className = "p-2.5 bg-green-950 rounded-lg border border-gray-700 text-xs truncate cursor-pointer hover:bg-green-800";
                 }
             }
+
             if (room.gameState !== 'LOBBY') {
                 document.getElementById('lobby').classList.add('hidden');
                 document.getElementById('room-lobby').classList.add('hidden');
@@ -513,19 +564,10 @@
 
         socket.on('updateGameState', (room) => {
             currentRoomState = room;
+
             let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
             if (myCurrentPlayer) {
                 mySeat = myCurrentPlayer.seat;
-                
-                // อัปเดตปุ่มบอท
-                const botBtn = document.getElementById('auto-bot-btn');
-                if (myCurrentPlayer.isAutoBot) {
-                    botBtn.innerText = "👤 เล่นเอง (ปิดบอท)";
-                    botBtn.className = "bg-red-600 text-white text-[11px] px-2.5 py-1 rounded-lg font-bold shadow active:scale-95 transition border border-red-400";
-                } else {
-                    botBtn.innerText = "🤖 เปิดบอทเล่นแทน";
-                    botBtn.className = "bg-purple-600 text-white text-[11px] px-2.5 py-1 rounded-lg font-bold shadow active:scale-95 transition border border-purple-400";
-                }
             }
 
             if (room.gameState !== 'LOBBY') {
@@ -558,9 +600,7 @@
                 
                 const nameEl = document.getElementById(`pos-${pos}-name`);
                 if (player) {
-                    let botStatus = player.isAutoBot ? "🤖[บอท]" : "";
-                    let displayName = (pos === 'bottom') ? `คุณ (${player.name})` : player.name;
-                    nameEl.innerText = `${displayName} ${botStatus}`.trim();
+                    nameEl.innerText = (pos === 'bottom') ? `คุณ (${player.name})` : player.name;
                 } else {
                     nameEl.innerText = 'รอ...';
                 }
@@ -616,7 +656,6 @@
             } else if (room.gameState === 'PLAYING') {
                 let playedCount = room.currentRoundCards.filter(c => c !== null).length;
                 let currentTurn = (room.starterPlayer + playedCount) % 4;
-                let activePlayer = room.seats[currentTurn];
                 
                 let leadSuitInfo = "";
                 if (playedCount > 0) {
@@ -624,10 +663,8 @@
                     leadSuitInfo = ` | บังคับออก: ${leadCard.suit}`;
                 }
 
-                let autoBotText = activePlayer && activePlayer.isAutoBot ? " 🤖 (บอทออกไพ่แทน)" : "";
-                document.getElementById('game-status').innerText = `ตา P${currentTurn} (${activePlayer.name}) ออกไพ่${leadSuitInfo}${autoBotText}`;
+                document.getElementById('game-status').innerText = `ตา P${currentTurn} (${room.seats[currentTurn].name}) ออกไพ่${leadSuitInfo}`;
             } else if (room.gameState === 'END') {
-                document.getElementById('timer-display').classList.add('hidden');
                 controls.classList.remove('hidden');
                 gameoverControls.classList.remove('hidden');
 
@@ -724,6 +761,7 @@
             container.innerHTML = '';
 
             let minBid = currentHighest === 60 ? 65 : currentHighest + 5;
+
             for (let bid = minBid; bid <= 100; bid += 5) {
                 const btn = document.createElement('button');
                 btn.className = "bg-blue-600 active:bg-blue-700 text-white font-bold py-1.5 px-3 rounded-xl text-xs shadow hover:bg-blue-500 transition";
