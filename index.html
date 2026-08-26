@@ -12,43 +12,59 @@
             user-select: none;
             -webkit-user-select: none;
         }
+
+        /* ปรับ Container ให้รองรับไพ่เรียงแนวนอนแบบไม่อัดแน่นเกินไป */
         .hand-container {
             display: flex;
-            justify-content: center;
+            justify-content: flex-start;
             align-items: flex-end;
             overflow-x: auto;
-            padding: 8px 12px;
+            padding: 12px 16px 8px 16px;
             scroll-behavior: smooth;
         }
+
+        /* ปรับขนาดและระยะซ้อนทับให้เห็นขอบและดอกไพ่ชัดเจน */
         .card-item {
             flex: 0 0 auto;
-            width: 48px;
-            height: 70px;
-            margin-left: -20px;
-            transition: transform 0.15s ease, margin 0.15s ease;
-            box-shadow: -2px 2px 8px rgba(0,0,0,0.4);
+            width: 52px;
+            height: 76px;
+            margin-left: -24px;
+            transition: transform 0.15s ease, margin 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: -3px 2px 6px rgba(0, 0, 0, 0.4);
             border-radius: 8px;
             background: #ffffff;
             position: relative;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 3px 4px;
+            padding: 4px 5px;
             cursor: pointer;
         }
+
         .card-item:first-child {
-            margin-left: 0;
+            margin-left: 0 !important;
         }
+
+        /* เว้นระยะห่างพิเศษเมื่อเริ่มดอกใหม่ (Group Divider) */
+        .card-item.suit-group-start {
+            margin-left: 10px !important;
+            box-shadow: -4px 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        /* เอฟเฟกต์ยกไพ่เมื่อถูกเลือก */
         .card-item.selected-card {
-            transform: translateY(-16px) !important;
+            transform: translateY(-20px) !important;
             border: 2.5px solid #ef4444 !important;
-            box-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.9);
+            z-index: 20;
         }
+
         .card-item.disabled-card {
-            opacity: 0.6;
+            opacity: 0.65;
             cursor: not-allowed;
-            filter: grayscale(40%);
+            filter: grayscale(30%);
         }
+
         .suit-red { color: #dc2626; }
         .suit-black { color: #0f172a; }
 
@@ -219,7 +235,7 @@
             </div>
         </section>
 
-        <!-- Hand Deck Bottom Bar (รองรับแสดงผล 2 มือนั่ง 1v1) -->
+        <!-- Hand Deck Bottom Bar -->
         <footer class="bg-green-900/90 pt-1 pb-2 border-t border-green-700 shadow-2xl z-10 flex flex-col gap-1 max-h-[45vh] overflow-y-auto">
             
             <!-- มือนั่งฝั่งเพื่อน/พันธมิตร (จะแสดงเมื่ออยู่ในโหมด 1v1) -->
@@ -263,7 +279,7 @@
         const socket = io();
         let mySeat = -1;
         let myRoomId = '';
-        let myHands = {}; // เก็บไพ่ที่ถืออยู่ { 0: [...], 2: [...] }
+        let myHands = {};
         let selectedDiscardIndexes = [];
         let currentRoomState = null;
         let isChatOpen = false;
@@ -744,6 +760,7 @@
             }
         }
 
+        /* ฟังก์ชัน Render Hand พร้อมรองรับการเว้นระยะห่างตามดอกไพ่ (Suit Grouping) */
         function renderSingleHand(elementId, handCards, seatIdx) {
             const handDiv = document.getElementById(elementId);
             handDiv.innerHTML = '';
@@ -753,6 +770,8 @@
             let isCurrentTurn = (currentTurn === seatIdx);
             let isDealerDiscarding = (currentRoomState && currentRoomState.gameState === 'KITTY_DISCARD' && currentRoomState.dealer === seatIdx);
 
+            let previousSuit = null;
+
             handCards.forEach((card, index) => {
                 const cardEl = document.createElement('div');
                 const isSelected = isDealerDiscarding && selectedDiscardIndexes.includes(index);
@@ -761,7 +780,11 @@
 
                 let disabledClass = (!isCurrentTurn && !isDealerDiscarding) ? 'disabled-card' : '';
 
-                cardEl.className = `card-item border ${isSelected ? 'selected-card' : 'border-gray-300'} ${disabledClass}`;
+                // ตรวจสอบไพ่เพื่อจัดกลุ่มตามดอก
+                let isNewSuitGroup = (previousSuit !== null && previousSuit !== card.suit);
+                previousSuit = card.suit;
+
+                cardEl.className = `card-item border ${isNewSuitGroup ? 'suit-group-start' : ''} ${isSelected ? 'selected-card' : 'border-gray-300'} ${disabledClass}`;
                 cardEl.innerHTML = `
                     <div class="flex justify-between items-start leading-none">
                         <span class="text-xs font-black ${suitClass}">${card.value}</span>
