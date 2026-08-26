@@ -4,520 +4,412 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
-
-app.use(express.static(__dirname));
-
-const rooms = {};
-
-const CARD_RANKS = {
-    '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7,
-    '9': 8, '10': 9, 'J': 10, 'Q': 11, 'K': 12, 'A': 13
-};
-
-const SUIT_RANKS = {
-    '♠': 1,
-    '♥️': 2,
-    '♣': 3,
-    '♦️': 4
-};
-
-function createDeck() {
-    const suits = ['♠', '♥️', '♣', '♦️'];
-    const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-    let deck = [];
-    for (let s of suits) {
-        for (let v of values) {
-            deck.push({ suit: s, value: v });
-        }
-    }
-    return deck.sort(() => Math.random() - 0.5);
-}
-
-function calculateCardScore(card) {
-    if (card.value === '5') return 5;
-    if (card.value === '10' || card.value === 'A') return 10;
-    return 0;
-}
-
-function sortCards(a, b) {
-    if (SUIT_RANKS[a.suit] !== SUIT_RANKS[b.suit]) {
-        return SUIT_RANKS[a.suit] - SUIT_RANKS[b.suit];
-    }
-    return CARD_RANKS[b.value] - CARD_RANKS[a.value];
-}
-
-function createRoomObject(roomId, is1v1 = false) {
-    return {
-        id: roomId,
-        is1v1: is1v1,
-        seats: [null, null, null, null],
-        gameState: 'LOBBY',
-        deck: [],
-        hands: {},
-        kitty: [],
-        dealer: -1,
-        bidTurn: -1,
-        highestBid: 60,
-        highestBidder: -1,
-        consecutivePasses: 0,
-        trumpSuit: null,
-        teamAScore: 0,
-        teamBScore: 0,
-        teamACapturedCards: [],
-        teamBCapturedCards: [],
-        starterPlayer: -1,
-        currentRoundCards: [null, null, null, null],
-        roundCount: 0,
-        playedHistory: [],
-        voidSuits: { 0: [], 1: [], 2: [], 3: [] }
-    };
-}
-
-io.on('connection', (socket) => {
-    
-    socket.on('createRoom', ({ playerName, is1v1 }) => {
-        const roomId = Math.floor(1000 + Math.random() * 9000).toString();
-        const room = createRoomObject(roomId, is1v1);
-        
-        if (is1v1) {
-            // โหมด 1v1: ผู้สร้างคุมที่นั่ง 0 และ 2
-            room.seats[0] = { id: socket.id, name: `${playerName} (1)`, isAI: false, seat: 0 };
-            room.seats[2] = { id: socket.id, name: `${playerName} (2)`, isAI: false, seat: 2 };
-        } else {
-            room.seats[0] = { id: socket.id, name: playerName, isAI: false, seat: 0 };
-        }
-
-        rooms[roomId] = room;
-        socket.join(roomId);
-        socket.emit('roomCreated', { roomId, seat: 0 });
-        io.to(roomId).emit('updateRoom', room);
-        
-        io.to(roomId).emit('newChatMessage', {
-            senderName: 'ระบบ',
-            message: `🎉 คุณ ${playerName} สร้างห้องพักสำเร็จ ${is1v1 ? '(โหมด 1 VS 1)' : ''}`,
-            isSystem: true
-        });
-    });
-
-    socket.on('createSinglePlayer', (playerName) => {
-        const roomId = Math.floor(1000 + Math.random() * 9000).toString();
-        const room = createRoomObject(roomId, false);
-        room.seats[0] = { id: socket.id, name: playerName, isAI: false, seat: 0 };
-        for (let i = 1; i <= 3; i++) {
-            room.seats[i] = { id: `bot-${i}`, name: `บอท AI ${i}`, isAI: true, seat: i };
-        }
-        rooms[roomId] = room;
-        socket.join(roomId);
-        socket.emit('roomCreated', { roomId, seat: 0 });
-        io.to(roomId).emit('updateRoom', room);
-        
-        io.to(roomId).emit('newChatMessage', {
-            senderName: 'ระบบ',
-            message: `🤖 เริ่มเกมโหมดเล่นกับบอทแล้ว`,
-            isSystem: true
-        });
-    });
-
-    socket.on('joinRoom', ({ roomId, playerName }) => {
-        const room = rooms[roomId];
-        if (!room) return socket.emit('errorMessage', 'ไม่พบห้องนี้');
-
-        if (room.is1v1) {
-            // โหมด 1v1: คนที่สองจะได้เก้าอี้ 1 และ 3
-            if (room.seats[1] !== null) return socket.emit('errorMessage', 'ห้องเต็มแล้ว');
-            room.seats[1] = { id: socket.id, name: `${playerName} (1)`, isAI: false, seat: 1 };
-            room.seats[3] = { id: socket.id, name: `${playerName} (2)`, isAI: false, seat: 3 };
-            socket.join(roomId);
-            socket.emit('joinedSuccess', { roomId, seat: 1 });
-        } else {
-            let emptySeat = room.seats.findIndex(s => s === null);
-            if (emptySeat === -1) return socket.emit('errorMessage', 'ห้องเต็มแล้ว');
-
-            room.seats[emptySeat] = { id: socket.id, name: playerName, isAI: false, seat: emptySeat };
-            socket.join(roomId);
-            socket.emit('joinedSuccess', { roomId, seat: emptySeat });
-        }
-
-        io.to(roomId).emit('updateRoom', room);
-        io.to(roomId).emit('newChatMessage', {
-            senderName: 'ระบบ',
-            message: `👋 คุณ ${playerName} เข้าร่วมห้องแล้ว`,
-            isSystem: true
-        });
-    });
-
-    socket.on('sendChatMessage', ({ roomId, message }) => {
-        const room = rooms[roomId];
-        if (!room) return;
-        const player = room.seats.find(s => s && s.id === socket.id);
-        const senderName = player ? player.name.replace(/ \([12]\)/, '') : 'ผู้รับชม';
-
-        io.to(roomId).emit('newChatMessage', {
-            senderId: socket.id,
-            senderName: senderName,
-            message: message,
-            isSystem: false
-        });
-    });
-
-    socket.on('changeSeat', ({ roomId, targetSeat }) => {
-        const room = rooms[roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.is1v1) return;
-        
-        let currentSeat = room.seats.findIndex(s => s && s.id === socket.id);
-        if (currentSeat !== -1 && room.seats[targetSeat] === null) {
-            room.seats[targetSeat] = room.seats[currentSeat];
-            room.seats[targetSeat].seat = targetSeat;
-            room.seats[currentSeat] = null;
-            io.to(roomId).emit('updateRoom', room);
-        }
-    });
-
-    socket.on('fillAI', ({ roomId }) => {
-        const room = rooms[roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.is1v1) return;
-        for (let i = 0; i < 4; i++) {
-            if (room.seats[i] === null) {
-                room.seats[i] = { id: `bot-${i}`, name: `บอท AI ${i}`, isAI: true, seat: i };
-            }
-        }
-        io.to(roomId).emit('updateRoom', room);
-    });
-
-    socket.on('startGameReq', ({ roomId }) => {
-        const room = rooms[roomId];
-        if (!room) return;
-        if (room.seats.some(s => s === null)) return socket.emit('errorMessage', 'ที่นั่งยังไม่ครบ 4 เก้าอี้');
-
-        startNewGame(room);
-    });
-
-    socket.on('submitBid', ({ roomId, bidValue, isPass }) => {
-        const room = rooms[roomId];
-        if (!room || room.gameState !== 'BIDDING') return;
-
-        if (isPass) {
-            room.consecutivePasses++;
-        } else {
-            if (bidValue > room.highestBid) {
-                room.highestBid = bidValue;
-                room.highestBidder = room.bidTurn;
-                room.consecutivePasses = 0;
-            }
-        }
-
-        if (room.consecutivePasses >= 3 && room.highestBidder !== -1) {
-            room.dealer = room.highestBidder;
-            room.gameState = 'SELECT_TRUMP';
-            io.to(roomId).emit('updateGameState', room);
-            checkAITurn(room);
-            return;
-        }
-
-        room.bidTurn = (room.bidTurn + 1) % 4;
-        io.to(roomId).emit('updateGameState', room);
-        checkAITurn(room);
-    });
-
-    socket.on('selectTrump', ({ roomId, suit }) => {
-        const room = rooms[roomId];
-        if (!room || room.gameState !== 'SELECT_TRUMP') return;
-        
-        room.trumpSuit = suit;
-        
-        room.hands[room.dealer].push(...room.kitty);
-        room.hands[room.dealer].sort(sortCards);
-        room.kitty = [];
-
-        sendHandToPlayer(room, room.dealer);
-
-        room.gameState = 'KITTY_DISCARD';
-        io.to(roomId).emit('updateGameState', room);
-        checkAITurn(room);
-    });
-
-    socket.on('confirmDiscard', ({ roomId, discardIndexes }) => {
-        const room = rooms[roomId];
-        if (!room || room.gameState !== 'KITTY_DISCARD') return;
-
-        let dealerHand = room.hands[room.dealer];
-        discardIndexes.sort((a, b) => b - a);
-        discardIndexes.forEach(idx => {
-            room.kitty.push(dealerHand.splice(idx, 1)[0]);
-        });
-
-        dealerHand.sort(sortCards);
-
-        sendHandToPlayer(room, room.dealer);
-
-        room.gameState = 'PLAYING';
-        room.starterPlayer = room.dealer;
-        io.to(roomId).emit('updateGameState', room);
-        checkAITurn(room);
-    });
-
-    socket.on('playCard', ({ roomId, seat, cardIndex }) => {
-        const room = rooms[roomId];
-        if (!room || room.gameState !== 'PLAYING') return;
-
-        let currentTurn = getCurrentTurn(room);
-
-        // ตรวจสอบทั้งแบบส่ง seat ตรงๆ มา และตรวจ socket owner
-        let targetSeat = (seat !== undefined) ? seat : currentTurn;
-        if (targetSeat !== currentTurn) return;
-
-        let playerSeatObj = room.seats[currentTurn];
-        if (playerSeatObj.id !== socket.id) return;
-
-        executePlayCard(room, currentTurn, cardIndex);
-    });
-
-    socket.on('restartGameReq', ({ roomId }) => {
-        const room = rooms[roomId];
-        if (!room) return;
-        startNewGame(room);
-    });
+const io = new Server(server, {
+    cors: { origin: "*" }
 });
 
-function sendHandToPlayer(room, seatIdx) {
-    const player = room.seats[seatIdx];
-    if (player && !player.isAI) {
-        io.to(player.id).emit('yourHand', { seat: seatIdx, hand: room.hands[seatIdx] });
+// ลำดับความใหญ่ของไพ่ (CARD_RANKS)
+const CARD_RANKS = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, 
+    '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+};
+
+// ดอกไพ่
+const SUITS = ['Spades', 'Hearts', 'Diamonds', 'Clubs'];
+const VALUES = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
+
+// จัดเก็บข้อมูลห้องเกมทั้งหมด
+const rooms = {};
+
+// ------------------------------------------------------------------
+// ฟังก์ชันช่วยเหลือสำหรับสร้างและจัดการสำรับไพ่
+// ------------------------------------------------------------------
+function createDeck() {
+    let deck = [];
+    for (let suit of SUITS) {
+        for (let value of VALUES) {
+            deck.push({ suit, value });
+        }
     }
+    return deck;
 }
 
-function startNewGame(room) {
-    room.gameState = 'BIDDING';
-    room.deck = createDeck();
-    room.highestBid = 60;
-    room.highestBidder = -1;
-    room.consecutivePasses = 0;
-    room.trumpSuit = null;
-    room.teamAScore = 0;
-    room.teamBScore = 0;
-    room.teamACapturedCards = [];
-    room.teamBCapturedCards = [];
-    room.roundCount = 0;
-    room.currentRoundCards = [null, null, null, null];
-    room.playedHistory = [];
-    room.voidSuits = { 0: [], 1: [], 2: [], 3: [] };
-
-    for (let i = 0; i < 4; i++) {
-        room.hands[i] = room.deck.splice(0, 12).sort(sortCards);
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
     }
-    room.kitty = room.deck.splice(0, 4);
-
-    room.bidTurn = Math.floor(Math.random() * 4);
-
-    for (let i = 0; i < 4; i++) {
-        sendHandToPlayer(room, i);
-    }
-
-    io.to(room.id).emit('updateGameState', room);
-    checkAITurn(room);
+    return array;
 }
 
-function getCurrentTurn(room) {
-    let playedCount = room.currentRoundCards.filter(c => c !== null).length;
-    return (room.starterPlayer + playedCount) % 4;
-}
-
-function executePlayCard(room, seatIndex, cardIndex) {
+// ------------------------------------------------------------------
+// ฟังก์ชัน AI อัจฉริยะ (Smart AI Logic)
+// ------------------------------------------------------------------
+function getSmartAICardIndex(room, seatIndex) {
     let hand = room.hands[seatIndex];
-    let card = hand[cardIndex];
-
     let playedCount = room.currentRoundCards.filter(c => c !== null).length;
+    let turnOrder = playedCount + 1; // ลำดับการออกไพ่ในรอบนี้ (1, 2, 3, 4)
+    
+    // ดึงข้อมูลการจับคู่ทีม (ทีม A: 0, 2 | ทีม B: 1, 3)
+    let myTeam = (seatIndex === 0 || seatIndex === 2) ? [0, 2] : [1, 3];
+    let oppTeam = (seatIndex === 0 || seatIndex === 2) ? [1, 3] : [0, 2];
+    let partnerSeat = (seatIndex + 2) % 4;
+    let isPartnerDealer = myTeam.includes(room.dealer);
+    let isOppDealer = oppTeam.includes(room.dealer);
+
+    // กรองไพ่ตามกฎการบังคับออกตามดอกไพ่คนแรก (Follow Suit)
+    let validIndices = [];
     if (playedCount > 0) {
         let leadCard = room.currentRoundCards[room.starterPlayer];
-        let hasLeadSuit = hand.some(c => c.suit === leadCard.suit);
-        if (hasLeadSuit && card.suit !== leadCard.suit) {
-            return;
+        hand.forEach((c, idx) => {
+            if (c.suit === leadCard.suit) validIndices.push(idx);
+        });
+    }
+    // หากไม่มีไพ่ดอกเดียวกับคนแรก สามารถใช้ออกไพ่ใบไหนก็ได้ในมือ
+    if (validIndices.length === 0) {
+        validIndices = hand.map((_, idx) => idx);
+    }
+
+    // ประเมินพลังของไพ่ (บวกคะแนนเพิ่มหากเป็นไพ่ดอกหลัก/Trump)
+    const getCardPower = (card) => {
+        let baseRank = CARD_RANKS[card.value];
+        if (card.suit === room.trumpSuit) {
+            return baseRank + 100; // ไพ่ดอกหลักจะชนะไพ่ดอกธรรมดาเสมอ
         }
-        if (!hasLeadSuit && !room.voidSuits[seatIndex].includes(leadCard.suit)) {
-            room.voidSuits[seatIndex].push(leadCard.suit);
+        return baseRank;
+    };
+
+    // เช็กว่าเป็นไพ่ใหญ่ที่สุดในดอกนั้นที่ยังเหลืออยู่หรือไม่ (Card Counting)
+    const isHighestRemaining = (card) => {
+        let rank = CARD_RANKS[card.value];
+        const allRanks = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
+        for (let r of allRanks) {
+            if (CARD_RANKS[r] > rank) {
+                let higherPlayed = room.playedHistory.some(c => c.suit === card.suit && c.value === r);
+                if (!higherPlayed) return false; // มีไพ่ที่ใหญ่กว่ายังไม่ออก
+            } else {
+                break;
+            }
+        }
+        return true;
+    };
+
+    let validCards = validIndices.map(idx => ({ card: hand[idx], idx }));
+
+    // ==========================================
+    // Turn 1: บอทได้ออกไพ่คนแรก
+    // ==========================================
+    if (turnOrder === 1) {
+        let aceCard = validCards.find(item => item.card.value === 'A');
+        
+        // 1.1 ถ้าเพื่อนร่วมทีมเป็นเจ้ามือ
+        if (isPartnerDealer) {
+            if (aceCard) return aceCard.idx;
+            
+            let opt1 = validCards.filter(item => item.card.suit === room.trumpSuit && !['10', '5'].includes(item.card.value));
+            let opt2 = validCards.filter(item => item.card.suit !== room.trumpSuit && !['10', '5'].includes(item.card.value));
+
+            let choice = (Math.random() > 0.5 && opt1.length > 0) ? 1 : 2;
+            if (choice === 1 && opt1.length > 0) {
+                opt1.sort((a, b) => CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value]);
+                return opt1[0].idx; // ทิ้งไพ่เล็กดอกหลัก
+            }
+            if (opt2.length > 0) {
+                opt2.sort((a, b) => CARD_RANKS[b.card.value] - CARD_RANKS[a.card.value]);
+                return opt2[0].idx; // ทิ้งไพ่ใหญ่สุดที่ไม่ใช่ดอกหลัก
+            }
+        }
+
+        // 1.2 ถ้าทีมตรงข้ามเป็นเจ้ามือ
+        if (isOppDealer) {
+            if (aceCard) return aceCard.idx;
+            
+            let safeCards = validCards.filter(item => 
+                !['10', '5'].includes(item.card.value) && 
+                (!room.voidSuits || !room.voidSuits[room.dealer] || !room.voidSuits[room.dealer].includes(item.card.suit))
+            );
+            
+            if (safeCards.length > 0) {
+                safeCards.sort((a, b) => getCardPower(b.card) - getCardPower(a.card));
+                return safeCards[0].idx;
+            }
         }
     }
 
-    hand.splice(cardIndex, 1);
-    room.currentRoundCards[seatIndex] = card;
+    // ==========================================
+    // Turn 2: บอทได้ออกไพ่คนที่ 2
+    // ==========================================
+    if (turnOrder === 2) {
+        let firstCard = room.currentRoundCards[room.starterPlayer];
+        let firstPower = getCardPower(firstCard);
 
-    sendHandToPlayer(room, seatIndex);
+        let biggerCardsNoPoints = validCards.filter(item => 
+            getCardPower(item.card) > firstPower && !['10', '5'].includes(item.card.value)
+        );
+        if (biggerCardsNoPoints.length > 0) {
+            biggerCardsNoPoints.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+            return biggerCardsNoPoints[0].idx;
+        }
 
-    if (room.currentRoundCards.filter(c => c !== null).length === 4) {
-        io.to(room.id).emit('updateGameState', room);
-        setTimeout(() => resolveRound(room), 1500);
+        let biggerCardsPoints = validCards.filter(item => getCardPower(item.card) > firstPower);
+        if (biggerCardsPoints.length > 0) {
+            biggerCardsPoints.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+            return biggerCardsPoints[0].idx;
+        }
+
+        let noPointCards = validCards.filter(item => !['10', '5'].includes(item.card.value));
+        if (noPointCards.length > 0) {
+            noPointCards.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+            return noPointCards[0].idx;
+        }
+    }
+
+    // ==========================================
+    // Turn 3: บอทได้ออกไพ่คนที่ 3
+    // ==========================================
+    if (turnOrder === 3) {
+        let firstCard = room.currentRoundCards[room.starterPlayer];
+        let secondCard = room.currentRoundCards[(room.starterPlayer + 1) % 4];
+        let leadSuit = firstCard.suit;
+
+        let firstIsWinner = getCardPower(firstCard) > getCardPower(secondCard);
+        let firstIsHighest = isHighestRemaining(firstCard);
+
+        let hasLeadSuit = hand.some(c => c.suit === leadSuit);
+        if (!hasLeadSuit) {
+            if (secondCard.suit === room.trumpSuit && firstCard.suit !== room.trumpSuit) {
+                let trumpBigger = validCards.filter(item => 
+                    item.card.suit === room.trumpSuit && getCardPower(item.card) > getCardPower(secondCard)
+                );
+                if (trumpBigger.length > 0) {
+                    trumpBigger.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+                    return trumpBigger[0].idx;
+                } else {
+                    let otherMin = validCards.filter(item => item.card.suit !== room.trumpSuit);
+                    if (otherMin.length > 0) {
+                        otherMin.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+                        return otherMin[0].idx;
+                    }
+                }
+            }
+        }
+
+        if (firstIsWinner && firstIsHighest) {
+            let pointCards = validCards.filter(item => ['10', '5'].includes(item.card.value));
+            if (pointCards.length > 0) return pointCards[0].idx;
+        } else {
+            let maxCard = validCards.reduce((prev, curr) => 
+                getCardPower(curr.card) > getCardPower(prev.card) ? curr : prev
+            );
+            if (getCardPower(maxCard.card) > getCardPower(firstCard) && getCardPower(maxCard.card) > getCardPower(secondCard)) {
+                return maxCard.idx;
+            }
+        }
+
+        let smallCards = validCards.filter(item => !['10', '5'].includes(item.card.value));
+        if (smallCards.length > 0) {
+            smallCards.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+            return smallCards[0].idx;
+        }
+    }
+
+    // ==========================================
+    // Turn 4: บอทได้ออกไพ่คนที่ 4
+    // ==========================================
+    if (turnOrder === 4) {
+        let seat1 = room.starterPlayer;
+        let seat2 = (room.starterPlayer + 1) % 4;
+        let seat3 = (room.starterPlayer + 2) % 4;
+
+        let card1 = room.currentRoundCards[seat1];
+        let card2 = room.currentRoundCards[seat2];
+        let card3 = room.currentRoundCards[seat3];
+
+        let p2Power = getCardPower(card2);
+        let p2IsWinner = p2Power > getCardPower(card1) && p2Power > getCardPower(card3);
+
+        if (p2IsWinner || isHighestRemaining(card2)) {
+            let pointCards = validCards.filter(item => ['10', '5'].includes(item.card.value));
+            if (pointCards.length > 0) return pointCards[0].idx;
+        } else {
+            let maxCard = validCards.reduce((prev, curr) => 
+                getCardPower(curr.card) > getCardPower(prev.card) ? curr : prev
+            );
+            if (getCardPower(maxCard.card) > getCardPower(card1) && 
+                getCardPower(maxCard.card) > getCardPower(card2) && 
+                getCardPower(maxCard.card) > getCardPower(card3)) {
+                return maxCard.idx;
+            }
+        }
+
+        let smallCards = validCards.filter(item => !['10', '5'].includes(item.card.value));
+        if (smallCards.length > 0) {
+            smallCards.sort((a, b) => getCardPower(a.card) - getCardPower(b.card));
+            return smallCards[0].idx;
+        }
+    }
+
+    // Fallback
+    let fallbackCards = validCards.filter(item => !['10', '5'].includes(item.card.value));
+    return (fallbackCards.length > 0) ? fallbackCards[0].idx : validCards[0].idx;
+}
+
+// ------------------------------------------------------------------
+// ฟังก์ชันจัดการตรรกะเกม (Game Engine)
+// ------------------------------------------------------------------
+function playCard(roomId, seatIndex, cardIndex) {
+    let room = rooms[roomId];
+    if (!room || room.turn !== seatIndex) return;
+
+    let playedCard = room.hands[seatIndex].splice(cardIndex, 1)[0];
+    room.currentRoundCards[seatIndex] = playedCard;
+    room.playedHistory.push(playedCard);
+
+    // บันทึกดอกไพ่ที่หมดมือ (Void Suit Track)
+    if (room.currentRoundCards.filter(c => c !== null).length > 1) {
+        let leadSuit = room.currentRoundCards[room.starterPlayer].suit;
+        if (playedCard.suit !== leadSuit) {
+            if (!room.voidSuits[seatIndex].includes(leadSuit)) {
+                room.voidSuits[seatIndex].push(leadSuit);
+            }
+        }
+    }
+
+    // ตรวจสอบว่าครบรอบ 4 คนหรือยัง
+    let playedCount = room.currentRoundCards.filter(c => c !== null).length;
+    if (playedCount === 4) {
+        // ประมวลผลผู้ชนะในรอบนั้น
+        setTimeout(() => resolveRound(roomId), 1500);
     } else {
-        io.to(room.id).emit('updateGameState', room);
-        checkAITurn(room);
+        // เปลี่ยนตาผู้เล่นถัดไป
+        room.turn = (room.turn + 1) % 4;
+        io.to(roomId).emit('updateState', getPublicGameState(room));
+        checkNextTurn(roomId);
     }
 }
 
-function resolveRound(room) {
-    let leadCard = room.currentRoundCards[room.starterPlayer];
-    let winningSeat = room.starterPlayer;
-    let winningCard = leadCard;
+function resolveRound(roomId) {
+    let room = rooms[roomId];
+    if (!room) return;
 
-    room.currentRoundCards.forEach(c => {
-        if (c) room.playedHistory.push(c);
-    });
+    let leadSuit = room.currentRoundCards[room.starterPlayer].suit;
+    let winningSeat = room.starterPlayer;
+    let maxPower = -1;
 
     for (let i = 0; i < 4; i++) {
-        if (i === room.starterPlayer) continue;
         let card = room.currentRoundCards[i];
+        let power = CARD_RANKS[card.value];
 
-        if (card.suit === winningCard.suit) {
-            if (CARD_RANKS[card.value] > CARD_RANKS[winningCard.value]) {
-                winningCard = card;
-                winningSeat = i;
-            }
-        } else if (card.suit === room.trumpSuit && winningCard.suit !== room.trumpSuit) {
-            winningCard = card;
+        if (card.suit === room.trumpSuit) {
+            power += 100;
+        } else if (card.suit !== leadSuit) {
+            power = 0; // ไพ่ผิดดอกที่ไม่ใช่ไพ่หลักจะไม่มีพลัง
+        }
+
+        if (power > maxPower) {
+            maxPower = power;
             winningSeat = i;
         }
     }
 
+    // คำนวณคะแนนในตานี้ (10 = 10 แต้ม, 5 = 5 แต้ม)
     let roundPoints = 0;
-    let pointCardsInRound = [];
-
-    room.currentRoundCards.forEach(c => {
-        let pts = calculateCardScore(c);
-        roundPoints += pts;
-        if (pts > 0) pointCardsInRound.push(c);
+    room.currentRoundCards.forEach(card => {
+        if (card.value === '10') roundPoints += 10;
+        if (card.value === '5') roundPoints += 5;
     });
 
-    if (winningSeat === 0 || winningSeat === 2) {
-        room.teamAScore += roundPoints;
-        room.teamACapturedCards.push(...pointCardsInRound);
-    } else {
-        room.teamBScore += roundPoints;
-        room.teamBCapturedCards.push(...pointCardsInRound);
-    }
+    // บวกคะแนนให้ทีมผู้ชนะ (ทีม 0,2 หรือ 1,3)
+    let winningTeam = (winningSeat === 0 || winningSeat === 2) ? 'TeamA' : 'TeamB';
+    room.scores[winningTeam] += roundPoints;
 
-    room.starterPlayer = winningSeat;
+    // เคลียร์ไพ่ประจำรอบ และส่งสิทธิ์ให้ผู้ชนะได้ออกไพ่ก่อนในรอบถัดไป
     room.currentRoundCards = [null, null, null, null];
-    room.roundCount++;
+    room.starterPlayer = winningSeat;
+    room.turn = winningSeat;
 
-    if (room.roundCount >= 12) {
-        let kittyPoints = 0;
-        let kittyPointCards = [];
-        room.kitty.forEach(c => {
-            let pts = calculateCardScore(c);
-            kittyPoints += pts * 2;
-            if (pts > 0) kittyPointCards.push(c);
-        });
-
-        if (winningSeat === 0 || winningSeat === 2) {
-            room.teamAScore += kittyPoints;
-            room.teamACapturedCards.push(...kittyPointCards);
-        } else {
-            room.teamBScore += kittyPoints;
-            room.teamBCapturedCards.push(...kittyPointCards);
-        }
-
-        room.gameState = 'END';
-    }
-
-    io.to(room.id).emit('updateGameState', room);
-    checkAITurn(room);
-}
-
-function checkAITurn(room) {
-    if (room.gameState === 'BIDDING') {
-        let currentBot = room.seats[room.bidTurn];
-        if (currentBot && currentBot.isAI) {
-            setTimeout(() => {
-                let bidValue = 0;
-                let isPass = true;
-                if (room.highestBid < 70 && Math.random() > 0.5) {
-                    bidValue = room.highestBid + 5;
-                    isPass = false;
-                }
-                socketEmitBid(room, bidValue, isPass);
-            }, 1000);
-        }
-    } else if (room.gameState === 'SELECT_TRUMP') {
-        let dealerBot = room.seats[room.dealer];
-        if (dealerBot && dealerBot.isAI) {
-            setTimeout(() => {
-                const suits = ['♠', '♥️', '♣', '♦️'];
-                room.trumpSuit = suits[Math.floor(Math.random() * suits.length)];
-                
-                room.hands[room.dealer].push(...room.kitty);
-                room.hands[room.dealer].sort(sortCards);
-                room.kitty = [];
-
-                room.gameState = 'KITTY_DISCARD';
-                io.to(room.id).emit('updateGameState', room);
-                checkAITurn(room);
-            }, 1000);
-        }
-    } else if (room.gameState === 'KITTY_DISCARD') {
-        let dealerBot = room.seats[room.dealer];
-        if (dealerBot && dealerBot.isAI) {
-            setTimeout(() => {
-                let hand = room.hands[room.dealer];
-                let nonPointIndexes = [];
-                hand.forEach((c, idx) => {
-                    if (!['A', '10', '5'].includes(c.value)) nonPointIndexes.push(idx);
-                });
-                
-                nonPointIndexes.sort(() => Math.random() - 0.5);
-                let toDiscard = nonPointIndexes.slice(0, 4).sort((a, b) => b - a);
-
-                toDiscard.forEach(idx => {
-                    room.kitty.push(hand.splice(idx, 1)[0]);
-                });
-
-                hand.sort(sortCards);
-
-                room.gameState = 'PLAYING';
-                room.starterPlayer = room.dealer;
-                io.to(room.id).emit('updateGameState', room);
-                checkAITurn(room);
-            }, 1000);
-        }
-    } else if (room.gameState === 'PLAYING') {
-        let currentTurn = getCurrentTurn(room);
-        let bot = room.seats[currentTurn];
-        if (bot && bot.isAI) {
-            setTimeout(() => {
-                let chosenIndex = getSmartAICardIndex(room, currentTurn);
-                executePlayCard(room, currentTurn, chosenIndex);
-            }, 1000);
-        }
-    }
-}
-
-function socketEmitBid(room, bidValue, isPass) {
-    if (isPass) {
-        room.consecutivePasses++;
+    // เช็กว่าหมดมือหรือยัง (จบเกม)
+    if (room.hands[0].length === 0) {
+        io.to(roomId).emit('gameOver', { scores: room.scores });
     } else {
-        if (bidValue > room.highestBid) {
-            room.highestBid = bidValue;
-            room.highestBidder = room.bidTurn;
-            room.consecutivePasses = 0;
+        io.to(roomId).emit('updateState', getPublicGameState(room));
+        checkNextTurn(roomId);
+    }
+}
+
+function checkNextTurn(roomId) {
+    let room = rooms[roomId];
+    if (!room) return;
+
+    // ถ้าเป็นตาของ AI ให้ AI คำนวณและออกไพ่โดยอัตโนมัติ
+    if (room.isAI[room.turn]) {
+        setTimeout(() => {
+            let cardIndex = getSmartAICardIndex(room, room.turn);
+            playCard(roomId, room.turn, cardIndex);
+        }, 1000);
+    }
+}
+
+function getPublicGameState(room) {
+    return {
+        turn: room.turn,
+        starterPlayer: room.starterPlayer,
+        currentRoundCards: room.currentRoundCards,
+        scores: room.scores,
+        trumpSuit: room.trumpSuit,
+        dealer: room.dealer
+    };
+}
+
+// ------------------------------------------------------------------
+// Socket.IO Connection Event
+// ------------------------------------------------------------------
+io.on('connection', (socket) => {
+    console.log('Player connected:', socket.id);
+
+    socket.on('joinRoom', ({ roomId, playerName }) => {
+        socket.join(roomId);
+
+        if (!rooms[roomId]) {
+            rooms[roomId] = {
+                players: [null, null, null, null],
+                isAI: [true, true, true, true],
+                hands: [[], [], [], []],
+                currentRoundCards: [null, null, null, null],
+                playedHistory: [],
+                voidSuits: [[], [], [], []],
+                scores: { TeamA: 0, TeamB: 0 },
+                dealer: 0,
+                starterPlayer: 1,
+                turn: 1,
+                trumpSuit: 'Spades'
+            };
         }
-    }
 
-    if (room.consecutivePasses >= 3 && room.highestBidder !== -1) {
-        room.dealer = room.highestBidder;
-        room.gameState = 'SELECT_TRUMP';
-        io.to(room.id).emit('updateGameState', room);
-        checkAITurn(room);
-        return;
-    }
+        let room = rooms[roomId];
+        let seatIndex = room.players.findIndex(p => p === null);
 
-    room.bidTurn = (room.bidTurn + 1) % 4;
-    io.to(room.id).emit('updateGameState', room);
-    checkAITurn(room);
-}
+        if (seatIndex !== -1) {
+            room.players[seatIndex] = { id: socket.id, name: playerName };
+            room.isAI[seatIndex] = false;
+        }
 
-function getSmartAICardIndex(room, seatIndex) {
-    let hand = room.hands[seatIndex];
-    let validCards = hand.map((card, idx) => ({ card, idx }));
-    return validCards[0].idx;
-}
+        // เริ่มเกมอัตโนมัติเมื่อสร้างห้อง
+        let deck = shuffle(createDeck());
+        for (let i = 0; i < 4; i++) {
+            room.hands[i] = deck.splice(0, 13);
+        }
+
+        socket.emit('initHand', room.hands[seatIndex]);
+        io.to(roomId).emit('updateState', getPublicGameState(room));
+
+        checkNextTurn(roomId);
+    });
+
+    socket.on('playCard', ({ roomId, seatIndex, cardIndex }) => {
+        playCard(roomId, seatIndex, cardIndex);
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
