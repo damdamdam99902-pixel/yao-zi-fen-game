@@ -23,7 +23,7 @@
             scroll-behavior: smooth;
         }
 
-        /* ปรับสไตล์พื้นหลังไพ่ให้เป็นสีขาวทึบ 100% ไม่โปร่งแสง */
+        /* ปรับขนาดและระยะซ้อนทับให้เห็นขอบและดอกไพ่ชัดเจน (พื้นหลังขาวทึบปกติ) */
         .card-item {
             flex: 0 0 auto;
             width: 52px;
@@ -33,13 +33,13 @@
             box-shadow: -3px 2px 6px rgba(0, 0, 0, 0.4);
             border-radius: 8px;
             background: #ffffff !important;
-            opacity: 1 !important;
             position: relative;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             padding: 4px 5px;
             cursor: pointer;
+            opacity: 1 !important;
         }
 
         .card-item:first-child {
@@ -60,10 +60,11 @@
             z-index: 20;
         }
 
+        /* ปรับตอนยังไม่ถึงตาออกไพ่ ให้ไพ่มีพื้นหลังทึบปกติ (ถอด opacity/โปร่งแสง ออก) */
         .card-item.disabled-card {
-            opacity: 0.65 !important;
             cursor: not-allowed;
             filter: grayscale(30%);
+            opacity: 1 !important;
         }
 
         .suit-red { color: #dc2626; }
@@ -77,7 +78,6 @@
             margin-left: -10px;
             box-shadow: -1px 2px 4px rgba(0,0,0,0.6);
             background: #ffffff !important;
-            opacity: 1 !important;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -86,6 +86,7 @@
             line-height: 0.95;
             flex-shrink: 0;
             border: 1px solid #94a3b8;
+            opacity: 1 !important;
         }
         .point-card-mini:first-child { margin-left: 0; }
         
@@ -241,7 +242,7 @@
         <footer class="bg-green-900 pt-1 pb-2 border-t border-green-700 shadow-2xl z-10 flex flex-col gap-1 max-h-[45vh] overflow-y-auto">
             
             <!-- มือนั่งฝั่งเพื่อน/พันธมิตร (จะแสดงเมื่ออยู่ในโหมด 1v1) -->
-            <div id="partner-hand-box" class="hidden border-b border-green-800 pb-1 bg-black/20">
+            <div id="partner-hand-box" class="hidden border-b border-green-800 pb-1 bg-black/40">
                 <div class="text-[10px] text-center text-yellow-300 font-bold flex justify-center items-center gap-1">
                     🤝 ไพ่เก้าอี้พันธมิตร: <span id="partner-seat-name" class="text-white"></span>
                 </div>
@@ -270,7 +271,7 @@
             
             <div id="chat-messages" class="flex-1 p-3 overflow-y-auto space-y-2 text-xs flex flex-col"></div>
 
-            <form onsubmit="sendChatMessage(event)" class="p-2 border-t border-green-800 flex gap-1 bg-green-900/80">
+            <form onsubmit="sendChatMessage(event)" class="p-2 border-t border-green-800 flex gap-1 bg-green-900">
                 <input type="text" id="chat-input" placeholder="พิมพ์ข้อความ..." class="flex-1 bg-black text-white text-xs px-3 py-1.5 rounded-xl border border-green-700 focus:outline-none focus:border-yellow-400">
                 <button type="submit" class="bg-yellow-500 active:bg-yellow-600 text-black font-bold text-xs px-3 py-1.5 rounded-xl transition">ส่ง</button>
             </form>
@@ -512,7 +513,7 @@
             const msgEl = document.createElement('div');
             
             if (data.isSystem) {
-                msgEl.className = 'text-[10px] text-yellow-300 italic text-center py-1 bg-black/20 rounded-lg';
+                msgEl.className = 'text-[10px] text-yellow-300 italic text-center py-1 bg-black/40 rounded-lg';
                 msgEl.innerText = data.message;
             } else {
                 const isMe = data.senderId === socket.id;
@@ -635,9 +636,8 @@
                 if (card) {
                     const isRed = card.suit === '♥️' || card.suit === '♦️';
                     const suitClass = isRed ? 'suit-red' : 'suit-black';
-                    /* ปรับปรุงพื้นหลังไพ่บนกระดานให้เป็น bg-white opacity-100 ทึบแสง */
                     cardEl.innerHTML = `
-                        <div class="w-14 h-20 bg-white opacity-100 rounded-lg p-1 border-2 border-yellow-400 shadow-lg flex flex-col justify-between relative overflow-hidden">
+                        <div class="w-14 h-20 bg-white rounded-lg p-1 border-2 border-yellow-400 shadow-lg flex flex-col justify-between relative overflow-hidden">
                             <div class="text-xs font-black leading-none ${suitClass}">${card.value}</div>
                             <div class="absolute inset-0 flex items-center justify-center text-3xl font-bold ${suitClass}">${card.suit}</div>
                             <div class="text-[10px] text-right font-black leading-none ${suitClass} self-end">${card.suit}</div>
