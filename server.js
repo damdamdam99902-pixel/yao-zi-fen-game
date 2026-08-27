@@ -96,6 +96,10 @@ function createRoomObject(roomId) {
 
         seats: [null, null, null, null],
 
+        // 4P = ผู้เล่น 4 คน, 1V1 = ผู้เล่น 2 คนควบคุมคนละ 2 ที่นั่ง
+        mode: '4P',
+        controllerSeats: {},
+
         gameState: 'LOBBY',
 
         deck: [],
@@ -140,6 +144,98 @@ function createRoomObject(roomId) {
             2: [],
             3: []
         }
+    };
+}
+
+// =============================================================
+// 🎯 1 VS 1 / CONTROL HELPERS
+// =============================================================
+function getControlledSeats(room, socketId) {
+    if (!room) return [];
+    const seats = [];
+    for (let i = 0; i < 4; i++) {
+        const player = room.seats[i];
+        if (player && player.id === socketId && !player.isAI) seats.push(i);
+    }
+    return seats;
+}
+
+function socketControlsSeat(room, socketId, seatIndex) {
+    return getControlledSeats(room, socketId).includes(seatIndex);
+}
+
+function getControllerId(room, seatIndex) {
+    const player = room.seats[seatIndex];
+    return player ? player.id : null;
+}
+
+function sendControlledHands(room, socketId) {
+    if (!room || !socketId) return;
+    const socket = io.sockets.sockets.get(socketId);
+    if (!socket) return;
+    const controlledSeats = getControlledSeats(room, socketId);
+    const hands = {};
+    controlledSeats.forEach(seat => {
+        hands[seat] = room.hands[seat] || [];
+    });
+    if (controlledSeats.length === 1) {
+        socket.emit('yourHand', hands[controlledSeats[0]] || []);
+    }
+    socket.emit('yourHands', {
+        controlledSeats,
+        hands
+    });
+}
+
+function makePrivateGameState(room, socketId) {
+    const view = { ...room };
+    // ห้ามส่งไพ่ในมือทุกคนผ่าน updateGameState
+    delete view.hands;
+    delete view.deck;
+    delete view.kitty;
+    view.controlledSeats = getControlledSeats(room, socketId);
+    view.mySeat = view.controlledSeats[0] ?? -1;
+    return view;
+}
+
+function broadcastGameState(room) {
+    if (!room) return;
+    const sent = new Set();
+    for (let i = 0; i < 4; i++) {
+        const player = room.seats[i];
+        if (!player || player.isAI || sent.has(player.id)) continue;
+        const socket = io.sockets.sockets.get(player.id);
+        if (socket) {
+            socket.emit('updateGameState', makePrivateGameState(room, player.id));
+            sendControlledHands(room, player.id);
+            sent.add(player.id);
+        }
+    }
+}
+
+function fill1v1AIPair(room) {
+    if (!room) return;
+    room.mode = '1V1';
+    // ทีมผู้เล่น = Seat 0,2 / ทีม AI = Seat 1,3
+    const human = room.seats[0];
+    if (!human) return;
+    room.seats[2] = {
+        id: human.id,
+        name: human.name,
+        isAI: false,
+        seat: 2
+    };
+    room.seats[1] = {
+        id: 'bot-1v1-1',
+        name: 'บอท AI 1',
+        isAI: true,
+        seat: 1
+    };
+    room.seats[3] = {
+        id: 'bot-1v1-3',
+        name: 'บอท AI 2',
+        isAI: true,
+        seat: 3
     };
 }
 
@@ -239,6 +335,73 @@ io.on('connection', (socket) => {
     });
 
     // ---------------------------------------------------------
+    // สร้างเกม 1 VS 1 กับบอท
+    // ผู้เล่นควบคุม Seat 0 + 2 / AI ควบคุม Seat 1 + 3
+    // ---------------------------------------------------------
+    socket.on('create1v1AI', (playerName) => {
+        const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+        const room = createRoomObject(roomId);
+        room.mode = '1V1';
+        room.seats[0] = {
+            id: socket.id,
+            name: playerName || 'คุณ',
+            isAI: false,
+            seat: 0
+        };
+        fill1v1AIPair(room);
+        rooms[roomId] = room;
+        socket.join(roomId);
+        socket.emit('roomCreated', {
+            roomId,
+            seat: 0,
+            controlledSeats: [0, 2],
+            mode: '1V1'
+        });
+        io.to(roomId).emit('updateRoom', room);
+        io.to(roomId).emit('newChatMessage', {
+            senderName: 'ระบบ',
+            message: '🤖 เริ่มเกม 1 VS 1 กับบอท — คุณควบคุม Seat 1 + 3',
+            isSystem: true
+        });
+    });
+
+    // ---------------------------------------------------------
+    // สร้างห้อง 1 VS 1 กับเพื่อน
+    // ผู้สร้าง = Seat 0 + 2 / เพื่อน = Seat 1 + 3
+    // ---------------------------------------------------------
+    socket.on('create1v1Room', (playerName) => {
+        const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+        const room = createRoomObject(roomId);
+        room.mode = '1V1';
+        room.seats[0] = {
+            id: socket.id,
+            name: playerName || 'ผู้เล่น 1',
+            isAI: false,
+            seat: 0
+        };
+        room.seats[2] = {
+            id: socket.id,
+            name: playerName || 'ผู้เล่น 1',
+            isAI: false,
+            seat: 2
+        };
+        rooms[roomId] = room;
+        socket.join(roomId);
+        socket.emit('roomCreated', {
+            roomId,
+            seat: 0,
+            controlledSeats: [0, 2],
+            mode: '1V1'
+        });
+        io.to(roomId).emit('updateRoom', room);
+        io.to(roomId).emit('newChatMessage', {
+            senderName: 'ระบบ',
+            message: '👥 ห้อง 1 VS 1 สร้างแล้ว — เพื่อนจะควบคุม Seat 2 + 4',
+            isSystem: true
+        });
+    });
+
+    // ---------------------------------------------------------
     // เข้าห้อง
     // ---------------------------------------------------------
     socket.on('joinRoom', ({ roomId, playerName }) => {
@@ -252,34 +415,40 @@ io.on('connection', (socket) => {
             );
         }
 
-        let emptySeat =
-            room.seats.findIndex(
-                s => s === null
-            );
+        let emptySeat;
+        let controlledSeats;
 
-        if (emptySeat === -1) {
-            return socket.emit(
-                'errorMessage',
-                'ห้องเต็มแล้ว'
-            );
+        if (room.mode === '1V1') {
+            // ห้อง 1 VS 1: คนที่สองควบคุม Seat 1 + 3
+            if (room.seats[1] || room.seats[3]) {
+                return socket.emit('errorMessage', 'ห้อง 1 VS 1 นี้มีผู้เล่นครบแล้ว');
+            }
+            room.seats[1] = { id: socket.id, name: playerName, isAI: false, seat: 1 };
+            room.seats[3] = { id: socket.id, name: playerName, isAI: false, seat: 3 };
+            controlledSeats = [1, 3];
+            emptySeat = 1;
+        } else {
+            emptySeat = room.seats.findIndex(s => s === null);
+            if (emptySeat === -1) {
+                return socket.emit('errorMessage', 'ห้องเต็มแล้ว');
+            }
+            room.seats[emptySeat] = {
+                id: socket.id,
+                name: playerName,
+                isAI: false,
+                seat: emptySeat
+            };
+            controlledSeats = [emptySeat];
         }
-
-        room.seats[emptySeat] = {
-            id: socket.id,
-            name: playerName,
-            isAI: false,
-            seat: emptySeat
-        };
 
         socket.join(roomId);
 
-        socket.emit(
-            'joinedSuccess',
-            {
-                roomId,
-                seat: emptySeat
-            }
-        );
+        socket.emit('joinedSuccess', {
+            roomId,
+            seat: emptySeat,
+            controlledSeats,
+            mode: room.mode
+        });
 
         io.to(roomId).emit(
             'updateRoom',
@@ -377,16 +546,21 @@ io.on('connection', (socket) => {
             return;
         }
 
-        for (let i = 0; i < 4; i++) {
-
-            if (room.seats[i] === null) {
-
-                room.seats[i] = {
-                    id: `bot-${i}`,
-                    name: `บอท AI ${i}`,
-                    isAI: true,
-                    seat: i
-                };
+        if (room.mode === '1V1') {
+            // ถ้ามีเจ้าของห้องแล้ว ให้เติม AI ฝั่งตรงข้ามเป็น Seat 1 + 3
+            if (room.seats[0] && !room.seats[0].isAI) {
+                fill1v1AIPair(room);
+            }
+        } else {
+            for (let i = 0; i < 4; i++) {
+                if (room.seats[i] === null) {
+                    room.seats[i] = {
+                        id: `bot-${i}`,
+                        name: `บอท AI ${i}`,
+                        isAI: true,
+                        seat: i
+                    };
+                }
             }
         }
 
@@ -435,6 +609,10 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            if (!socketControlsSeat(room, socket.id, room.bidTurn)) {
+                return;
+            }
+
             if (isPass) {
 
                 room.consecutivePasses++;
@@ -467,10 +645,7 @@ io.on('connection', (socket) => {
                 room.gameState =
                     'SELECT_TRUMP';
 
-                io.to(roomId).emit(
-                    'updateGameState',
-                    room
-                );
+                broadcastGameState(room);
 
                 checkAITurn(room);
 
@@ -480,10 +655,7 @@ io.on('connection', (socket) => {
             room.bidTurn =
                 (room.bidTurn + 1) % 4;
 
-            io.to(roomId).emit(
-                'updateGameState',
-                room
-            );
+            broadcastGameState(room);
 
             checkAITurn(room);
         }
@@ -505,6 +677,10 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            if (!socketControlsSeat(room, socket.id, room.dealer)) {
+                return;
+            }
+
             room.trumpSuit = suit;
 
             room.hands[room.dealer].push(
@@ -523,20 +699,14 @@ io.on('connection', (socket) => {
                 );
 
             if (dealerSocket) {
-
-                dealerSocket.emit(
-                    'yourHand',
-                    room.hands[room.dealer]
-                );
+                dealerSocket.emit('yourHand', room.hands[room.dealer]);
             }
+            sendControlledHands(room, room.seats[room.dealer].id);
 
             room.gameState =
                 'KITTY_DISCARD';
 
-            io.to(roomId).emit(
-                'updateGameState',
-                room
-            );
+            broadcastGameState(room);
 
             checkAITurn(room);
         }
@@ -555,6 +725,10 @@ io.on('connection', (socket) => {
                 !room ||
                 room.gameState !== 'KITTY_DISCARD'
             ) {
+                return;
+            }
+
+            if (!socketControlsSeat(room, socket.id, room.dealer)) {
                 return;
             }
 
@@ -580,23 +754,19 @@ io.on('connection', (socket) => {
                 );
 
             if (dealerSocket) {
-
-                dealerSocket.emit(
-                    'yourHand',
-                    dealerHand
-                );
+                dealerSocket.emit('yourHand', dealerHand);
             }
+            sendControlledHands(room, room.seats[room.dealer].id);
 
             room.gameState =
                 'PLAYING';
 
             room.starterPlayer =
                 room.dealer;
+            room.currentPlayer =
+                room.dealer;
 
-            io.to(roomId).emit(
-                'updateGameState',
-                room
-            );
+            broadcastGameState(room);
 
             checkAITurn(room);
         }
@@ -607,7 +777,7 @@ io.on('connection', (socket) => {
     // ---------------------------------------------------------
     socket.on(
         'playCard',
-        ({ roomId, cardIndex }) => {
+        ({ roomId, seatIndex, cardIndex }) => {
 
             const room = rooms[roomId];
 
@@ -621,12 +791,11 @@ io.on('connection', (socket) => {
             let currentTurn =
                 getCurrentTurn(room);
 
-            let playerSocket =
-                room.seats[currentTurn];
+            if (seatIndex !== undefined && seatIndex !== currentTurn) {
+                return;
+            }
 
-            if (
-                playerSocket.id !== socket.id
-            ) {
+            if (!socketControlsSeat(room, socket.id, currentTurn)) {
                 return;
             }
 
@@ -681,6 +850,8 @@ function startNewGame(room) {
 
     room.roundCount = 0;
 
+    room.currentPlayer = -1;
+
     room.currentRoundCards =
         [null, null, null, null];
 
@@ -710,28 +881,15 @@ function startNewGame(room) {
     room.bidTurn =
         Math.floor(Math.random() * 4);
 
-    // ส่งไพ่ให้ผู้เล่นจริง
+    // ส่งไพ่ให้ผู้ควบคุมแต่ละคน — 1V1 จะได้ทั้ง 2 มือ
+    const humanIds = new Set();
     for (let i = 0; i < 4; i++) {
-
-        const player =
-            room.seats[i];
-
-        if (
-            player &&
-            !player.isAI
-        ) {
-
-            io.to(player.id).emit(
-                'yourHand',
-                room.hands[i]
-            );
-        }
+        const player = room.seats[i];
+        if (player && !player.isAI) humanIds.add(player.id);
     }
+    humanIds.forEach(id => sendControlledHands(room, id));
 
-    io.to(room.id).emit(
-        'updateGameState',
-        room
-    );
+    broadcastGameState(room);
 
     checkAITurn(room);
 }
@@ -830,6 +988,7 @@ function executePlayCard(
             'yourHand',
             hand
         );
+        sendControlledHands(room, player.id);
     }
 
     // ---------------------------------------------------------
@@ -841,10 +1000,7 @@ function executePlayCard(
         ).length === 4
     ) {
 
-        io.to(room.id).emit(
-            'updateGameState',
-            room
-        );
+        broadcastGameState(room);
 
         setTimeout(
             () => resolveRound(room),
@@ -853,10 +1009,7 @@ function executePlayCard(
 
     } else {
 
-        io.to(room.id).emit(
-            'updateGameState',
-            room
-        );
+        broadcastGameState(room);
 
         checkAITurn(room);
     }
@@ -986,6 +1139,8 @@ function resolveRound(room) {
     // ---------------------------------------------------------
     room.starterPlayer =
         winningSeat;
+    room.currentPlayer =
+        winningSeat;
 
     room.currentRoundCards =
         [null, null, null, null];
@@ -1041,10 +1196,7 @@ function resolveRound(room) {
         room.gameState = 'END';
     }
 
-    io.to(room.id).emit(
-        'updateGameState',
-        room
-    );
+    broadcastGameState(room);
 
     checkAITurn(room);
 }
@@ -3310,102 +3462,287 @@ function chooseP4Card(
 //
 // ฟังก์ชันนี้จะถูกเรียกโดย checkAITurn()
 // =============================================================
+function getUnseenHigherCards(room, hand, card) {
+    const ranks = ['A','K','Q','J','10','9','8','7','6','5','4','3','2'];
+    const result = [];
+    for (const rank of ranks) {
+        if ((CARD_RANKS[rank] || 0) <= (CARD_RANKS[card.value] || 0)) break;
+        const played = (room.playedHistory || []).some(c => c && c.suit === card.suit && c.value === rank);
+        const own = (hand || []).some(c => c && c.suit === card.suit && c.value === rank);
+        if (!played && !own) result.push(rank);
+    }
+    return result;
+}
+
+function allOpponentsVoidSuit(room, seatIndex, suit) {
+    const opponents = [];
+    for (let s = 0; s < 4; s++) {
+        if (s === seatIndex || isSameTeam(seatIndex, s)) continue;
+        opponents.push(s);
+    }
+    return opponents.length > 0 && opponents.every(s => playerHasVoidSuit(room, s, suit));
+}
+
+function countUnseenSuitCards(room, hand, suit) {
+    let count = 0;
+    const ranks = ['A','K','Q','J','10','9','8','7','6','5','4','3','2'];
+    for (const rank of ranks) {
+        const played = (room.playedHistory || []).some(c => c && c.suit === suit && c.value === rank);
+        const own = (hand || []).some(c => c && c.suit === suit && c.value === rank);
+        if (!played && !own) count++;
+    }
+    return count;
+}
+
+function estimateCardWinRisk(room, seatIndex, card) {
+    if (!card) return 1;
+    const hand = room.hands[seatIndex] || [];
+    const higher = getUnseenHigherCards(room, hand, card);
+    if (higher.length === 0) return 0;
+
+    let possiblePlayers = 0;
+    let voidPlayers = 0;
+    for (let s = 0; s < 4; s++) {
+        if (s === seatIndex || isSameTeam(seatIndex, s)) continue;
+        if (playerHasVoidSuit(room, s, card.suit)) voidPlayers++;
+        else possiblePlayers++;
+    }
+
+    if (possiblePlayers === 0) return 0;
+    let risk = Math.min(0.95, 0.18 * higher.length + 0.12 * possiblePlayers);
+    if (voidPlayers > 0) risk *= Math.max(0.25, 1 - voidPlayers * 0.25);
+    if (card.value === 'A') risk = 0;
+    return Math.max(0, Math.min(1, risk));
+}
+
+function estimateCardControl(room, seatIndex, card) {
+    if (!card) return 0;
+    const hand = room.hands[seatIndex] || [];
+    const higher = getUnseenHigherCards(room, hand, card);
+    let control = 0;
+    if (higher.length === 0) control += 45;
+    else control += Math.max(0, 28 - higher.length * 6);
+    if (allOpponentsVoidSuit(room, seatIndex, card.suit)) control += 35;
+    if (card.value === 'A') control += 35;
+    if (card.value === 'K' && !higher.includes('A')) control += 20;
+    return control;
+}
+
+function getRemainingRounds(room) {
+    const round = Number(room.roundCount || 0);
+    return Math.max(0, 12 - round);
+}
+
+function getTeamScore(room, seatIndex) {
+    return isSameTeam(seatIndex, 0) ? (room.teamAScore || 0) : (room.teamBScore || 0);
+}
+
+function getOpponentScore(room, seatIndex) {
+    return isSameTeam(seatIndex, 0) ? (room.teamBScore || 0) : (room.teamAScore || 0);
+}
+
+function isDealerTeam(room, seatIndex) {
+    return room.dealer !== -1 && isSameTeam(seatIndex, room.dealer);
+}
+
+function cardCanBeatCurrent(room, seatIndex, card) {
+    const w = getCurrentWinningCard(room);
+    if (!w || !w.card) return false;
+    return canBeatCard(room, card, w.card);
+}
+
+function countPointCardsOnTable(room) {
+    return (room.currentRoundCards || []).reduce((sum, c) => sum + getCardPointValue(c), 0);
+}
+
+function isLastOrNearLastTrick(room) {
+    return getRemainingRounds(room) <= 2;
+}
+
+function advancedCardScore(room, seatIndex, item, position) {
+    const card = item.card;
+    const hand = room.hands[seatIndex] || [];
+    const partner = getPartnerSeat(seatIndex);
+    const winning = getCurrentWinningCard(room);
+    const leadSuit = getLeadSuit(room);
+    const isPoint = isPointCard(card);
+    const isTrump = isTrumpCard(room, card);
+    const roundPoints = getCurrentRoundPoints(room);
+    const lateGame = isLastOrNearLastTrick(room);
+    let score = 0;
+
+    // Base efficiency: prefer smaller cards when sacrificing and preserve power cards.
+    score -= (CARD_RANKS[card.value] || 0) * 0.18;
+    score -= estimateCardWinRisk(room, seatIndex, card) * 8;
+    score += estimateCardControl(room, seatIndex, card) * 0.18;
+
+    if (isPoint) score -= lateGame ? 3 : 10;
+    if (card.value === 'A') score -= lateGame ? 1 : 8;
+    if (isTrump) score -= lateGame ? 1 : 4;
+
+    // A trump is valuable as a control card, but should not be burned just to win a low-value trick.
+    if (isTrump && card.value === 'A') score += 10;
+
+    // If opponents are known void in this suit, the suit is strategically strong.
+    if (room.dealer !== -1 && playerHasVoidSuit(room, room.dealer, card.suit)) {
+        score += 7;
+    }
+
+    // ---------------- P1: choose a lead that creates future control ----------------
+    if (position === 0) {
+        if (card.value === 'A') {
+            score += 34;
+            if (isPartnerDealer(room, seatIndex)) score -= 14;
+        }
+
+        if (card.value === 'K' && !hasAceBeenPlayed(room, card.suit)) score += 8;
+
+        if (!isPoint && !isTrump) score += 4;
+
+        // Prefer leading a suit where the dealer/opponent is known void.
+        if (room.dealer !== -1 && playerHasVoidSuit(room, room.dealer, card.suit)) score += 18;
+
+        // If partner is dealer, don't casually spend an ace in a suit that can be saved.
+        if (isPartnerDealer(room, seatIndex) && card.value === 'A') score -= 22;
+    }
+
+    // ---------------- P2/P3/P4: react to current winner ----------------
+    if (position > 0 && winning.card) {
+        const partnerWinning = winning.seat === partner;
+        const opponentWinning = winning.seat !== seatIndex && !partnerWinning;
+        const canBeat = cardCanBeatCurrent(room, seatIndex, card);
+
+        if (partnerWinning) {
+            // Main objective: protect partner's winning trick and transfer points.
+            if (isPoint) {
+                score += roundPoints > 0 ? 35 : 12;
+                if (card.value === '5') score += 7;
+                if (card.value === '10') score += 4;
+                if (card.value === 'A') score -= 8;
+            } else {
+                score += 16;
+            }
+
+            if (canBeat) score -= 30; // Never overtake partner without a strong reason.
+
+            // If partner's card is genuinely locked, sending points becomes much better.
+            const partnerCard = room.currentRoundCards[partner];
+            if (partnerCard && isHighestRemainingInSuit(room, room.hands[partner] || [], partnerCard)) {
+                if (card.value === '5') score += 18;
+                if (card.value === '10') score += 14;
+                if (card.value === 'A') score += 3;
+            }
+        } else if (opponentWinning) {
+            // If the trick has points, winning it has extra value.
+            if (canBeat) {
+                score += 22 + roundPoints * 1.8;
+                // Win cheaply: non-point card that still wins is ideal.
+                if (!isPoint) score += 14;
+                if (isTrump) score -= 5;
+                if (card.value === 'A' && roundPoints < 10 && !lateGame) score -= 14;
+            } else {
+                // Cannot win: dump the least useful non-point card.
+                if (!isPoint) score += 18;
+                else score -= roundPoints > 0 ? 2 : 12;
+            }
+        }
+    }
+
+    // ---------------- Exact user strategy: 10/5 delivery ----------------
+    if (position === 2 || position === 3) {
+        if (winning.seat === partner && isPoint) {
+            score += 30;
+            if (card.value === '5') score += 8;
+            if (card.value === '10') score += 5;
+        }
+
+        // If partner is not winning, don't waste points merely to follow suit.
+        if (winning.seat !== partner && isPoint && !cardCanBeatCurrent(room, seatIndex, card)) {
+            score -= 16;
+        }
+    }
+
+    // ---------------- Protect A/10/5 when opponent dealer is void ----------------
+    if (room.dealer !== -1 && isOpponentDealer(room, seatIndex) && playerHasVoidSuit(room, room.dealer, card.suit)) {
+        if (card.value === 'A') score -= 24;
+        if (card.value === '10') score -= 16;
+        if (card.value === '5') score -= 10;
+    }
+
+    // ---------------- Endgame: information is more complete, become aggressive ----------------
+    if (lateGame) {
+        if (isPoint && roundPoints > 0 && cardCanBeatCurrent(room, seatIndex, card)) score += 18;
+        if (card.value === 'A') score += 8;
+        if (!isPoint) score -= 3;
+    }
+
+    // ---------------- Contract pressure ----------------
+    if (isDealerTeam(room, seatIndex)) {
+        const need = Number(room.highestBid || 0);
+        const myScore = getTeamScore(room, seatIndex);
+        const gap = need - myScore;
+        if (gap > 0 && roundPoints > 0 && cardCanBeatCurrent(room, seatIndex, card)) {
+            score += Math.min(24, gap * 0.22 + roundPoints * 2);
+        }
+    } else {
+        // Opponent is the contractor: deny high-value tricks when possible.
+        const opponentNeed = Number(room.highestBid || 0);
+        const opponentScore = getOpponentScore(room, seatIndex);
+        if (opponentNeed > opponentScore && roundPoints > 0 && cardCanBeatCurrent(room, seatIndex, card)) {
+            score += Math.min(18, roundPoints * 1.5);
+        }
+    }
+
+    // Small random tie breaker prevents deterministic mistakes without changing strategy.
+    score += Math.random() * 0.35;
+    return score;
+}
+
 function getSmartAICardIndex(
     room,
     seatIndex
 ) {
+    const legalCards = getLegalCards(room, seatIndex);
+    if (!legalCards || legalCards.length === 0) return 0;
 
-    const legalCards =
-        getLegalCards(
-            room,
-            seatIndex
-        );
+    const position = getPlayPosition(room, seatIndex);
 
-    if (
-        !legalCards ||
-        legalCards.length === 0
-    ) {
-        return 0;
+    // First preserve the explicit rule engine. It defines the intended behavior.
+    let rulePick = null;
+    if (position === 0) rulePick = chooseP1Card(room, seatIndex, legalCards);
+    else if (position === 1) rulePick = chooseP2Card(room, seatIndex, legalCards);
+    else if (position === 2) rulePick = chooseP3Card(room, seatIndex, legalCards);
+    else rulePick = chooseP4Card(room, seatIndex, legalCards);
+
+    // Score every legal candidate using card counting + team/trick context.
+    const scored = legalCards.map(item => ({
+        item,
+        score: advancedCardScore(room, seatIndex, item, position)
+    }));
+
+    scored.sort((a, b) => b.score - a.score);
+
+    // The explicit rule pick receives a strong bonus, so v2 improves the decision
+    // without abandoning the rules supplied by the user.
+    if (rulePick) {
+        const ruleCandidate = scored.find(x => x.item.idx === rulePick.idx);
+        if (ruleCandidate) ruleCandidate.score += 24;
     }
 
-    const position =
-        getPlayPosition(
-            room,
-            seatIndex
-        );
+    scored.sort((a, b) => b.score - a.score);
 
-    let selected = null;
+    // Hard strategic protections: do not burn a point card when a safe sacrifice exists.
+    const safeNonPoint = scored.filter(x => !isPointCard(x.item.card));
+    const partner = getPartnerSeat(seatIndex);
+    const winning = getCurrentWinningCard(room);
 
-    // ---------------------------------------------------------
-    // P1
-    // ---------------------------------------------------------
-    if (position === 0) {
-
-        selected =
-            chooseP1Card(
-                room,
-                seatIndex,
-                legalCards
-            );
+    if (winning.seat === partner && safeNonPoint.length > 0 && position > 0) {
+        const bestSafe = safeNonPoint[0];
+        const points = scored.find(x => isPointCard(x.item.card));
+        if (points && points.score < bestSafe.score + 10) return bestSafe.item.idx;
     }
 
-    // ---------------------------------------------------------
-    // P2
-    // ---------------------------------------------------------
-    else if (position === 1) {
-
-        selected =
-            chooseP2Card(
-                room,
-                seatIndex,
-                legalCards
-            );
-    }
-
-    // ---------------------------------------------------------
-    // P3
-    // ---------------------------------------------------------
-    else if (position === 2) {
-
-        selected =
-            chooseP3Card(
-                room,
-                seatIndex,
-                legalCards
-            );
-    }
-
-    // ---------------------------------------------------------
-    // P4
-    // ---------------------------------------------------------
-    else {
-
-        selected =
-            chooseP4Card(
-                room,
-                seatIndex,
-                legalCards
-            );
-    }
-
-    // ---------------------------------------------------------
-    // Safety fallback
-    // ---------------------------------------------------------
-    if (!selected) {
-
-        selected =
-            getSmallestNonPointCard(
-                legalCards
-            );
-    }
-
-    if (!selected) {
-
-        selected =
-            legalCards[0];
-    }
-
-    return selected.idx;
+    return scored[0].item.idx;
 }
 
 
@@ -4230,95 +4567,119 @@ function playAICard(
 // =============================================================
 function checkAITurn(room) {
 
-    if (!room) {
-        return;
-    }
-
-    if (
-        room.gameState === 'END'
-    ) {
-        return;
-    }
-
-    if (
-        room.gameState !== 'PLAYING'
-    ) {
-        return;
-    }
+    if (!room || room.gameState === 'END') return;
 
     const current =
-        room.currentPlayer;
+        (room.gameState === 'PLAYING')
+            ? ((room.currentPlayer !== undefined && room.currentPlayer !== null && room.currentPlayer >= 0)
+                ? room.currentPlayer
+                : getCurrentTurn(room))
+            : ((room.bidTurn !== undefined && room.bidTurn >= 0) ? room.bidTurn : room.dealer);
 
-    if (
-        current === undefined ||
-        current === null
-    ) {
-        return;
-    }
+    if (current === undefined || current === null || current < 0) return;
 
-    if (
-        !isAIPlayer(
-            room,
-            current
-        )
-    ) {
-        return;
-    }
+    if (!isAIPlayer(room, current)) return;
 
-    // ---------------------------------------------------------
-    // ป้องกัน AI เล่นซ้อน
-    // ---------------------------------------------------------
-    if (
-        room.aiThinking
-    ) {
-        return;
-    }
-
+    if (room.aiThinking) return;
     room.aiThinking = true;
 
-    // ---------------------------------------------------------
-    // ให้ AI มีเวลาคิด
-    //
-    // ทำให้ดูเหมือนผู้เล่นจริง
-    // ---------------------------------------------------------
     const thinkingTime =
         room.aiThinkingTime ||
-        500 +
-        Math.floor(
-            Math.random() * 700
-        );
+        500 + Math.floor(Math.random() * 700);
 
-    setTimeout(
-        () => {
+    setTimeout(() => {
+        room.aiThinking = false;
 
-            room.aiThinking = false;
+        if (!room || room.gameState === 'END') return;
 
-            // -------------------------------------------------
-            // ตรวจอีกครั้ง
-            // -------------------------------------------------
-            if (
-                room.gameState === 'END'
-            ) {
+        // -----------------------------------------------------
+        // AI ประมูล
+        // -----------------------------------------------------
+        if (room.gameState === 'BIDDING') {
+            if (room.bidTurn !== current || !isAIPlayer(room, current)) return;
+
+            const strength = evaluateAIBid(room, current);
+            const currentBid = room.highestBid || 60;
+
+            // ประเมิน bid แบบไม่บ้าราคา: 65/70/.../100
+            let desiredBid = 0;
+            if (strength >= 75) desiredBid = 100;
+            else if (strength >= 68) desiredBid = 90;
+            else if (strength >= 61) desiredBid = 80;
+            else if (strength >= 54) desiredBid = 75;
+            else if (strength >= 48) desiredBid = 70;
+            else if (strength >= 42) desiredBid = 65;
+
+            if (desiredBid > currentBid && desiredBid <= 100) {
+                room.highestBid = desiredBid;
+                room.highestBidder = current;
+                room.consecutivePasses = 0;
+            } else {
+                room.consecutivePasses++;
+            }
+
+            if (room.consecutivePasses >= 3 && room.highestBidder !== -1) {
+                room.dealer = room.highestBidder;
+                room.gameState = 'SELECT_TRUMP';
+                broadcastGameState(room);
+                checkAITurn(room);
                 return;
             }
 
-            if (
-                room.currentPlayer !==
-                current
-            ) {
-                return;
-            }
+            room.bidTurn = (room.bidTurn + 1) % 4;
+            broadcastGameState(room);
+            checkAITurn(room);
+            return;
+        }
 
-            playAICard(
-                room,
-                current
-            );
+        // -----------------------------------------------------
+        // AI เลือกดอกหลัก
+        // -----------------------------------------------------
+        if (room.gameState === 'SELECT_TRUMP') {
+            if (room.dealer !== current || !isAIPlayer(room, current)) return;
 
-        },
-        thinkingTime
-    );
+            room.trumpSuit = chooseAITrumpSuit(room, current);
+            room.hands[current].push(...room.kitty);
+            room.hands[current].sort(sortCards);
+            room.kitty = [];
+
+            room.gameState = 'KITTY_DISCARD';
+
+            // ส่งไพ่เต็มให้ controller ของ AI ไม่มีผลต่อผู้เล่น
+            // แล้วให้ AI ฝังไพ่ที่ไม่มีคะแนน 4 ใบ
+            const hand = room.hands[current];
+            const discard = hand
+                .map((card, idx) => ({ card, idx }))
+                .filter(x => !['A', '10', '5'].includes(x.card.value))
+                .sort((a, b) => {
+                    if (a.card.suit === room.trumpSuit && b.card.suit !== room.trumpSuit) return 1;
+                    if (b.card.suit === room.trumpSuit && a.card.suit !== room.trumpSuit) return -1;
+                    return CARD_RANKS[a.card.value] - CARD_RANKS[b.card.value];
+                })
+                .slice(0, 4)
+                .sort((a, b) => b.idx - a.idx);
+
+            discard.forEach(x => room.kitty.push(hand.splice(x.idx, 1)[0]));
+            hand.sort(sortCards);
+
+            room.gameState = 'PLAYING';
+            room.starterPlayer = current;
+            room.currentPlayer = current;
+            broadcastGameState(room);
+            checkAITurn(room);
+            return;
+        }
+
+        // -----------------------------------------------------
+        // AI เล่นไพ่
+        // -----------------------------------------------------
+        if (room.gameState === 'PLAYING') {
+            if (room.currentPlayer !== current) return;
+            playAICard(room, current);
+        }
+
+    }, thinkingTime);
 }
-
 
 // =============================================================
 // ส่ง Game State ให้ Client
@@ -4373,10 +4734,7 @@ function emitGameState(room) {
     // ---------------------------------------------------------
     // fallback
     // ---------------------------------------------------------
-    io.to(room.id).emit(
-        'updateGameState',
-        room
-    );
+    broadcastGameState(room);
 }
 
 
@@ -5535,6 +5893,532 @@ function testAI(
 // ส่วนนี้สามารถลบออกได้
 // =============================================================
 
+
+// =============================================================
+// 🧠 AI V3 — CARD COUNTING + PROBABILITY + LOOK-AHEAD
+// =============================================================
+//
+// V3 keeps the original P1/P2/P3/P4 rules as the hard strategy
+// baseline, then adds:
+//   1) exact card counting from playedHistory
+//   2) void-suit inference
+//   3) remaining high-card pressure
+//   4) trick-value calculation (10 + 5)
+//   5) partner/opponent winner protection
+//   6) end-game aggression
+//   7) one-trick look-ahead for every legal candidate
+//
+// No random strategic choice is used here.
+// =============================================================
+
+function v3CardKey(card) {
+    return card ? `${card.suit}_${card.value}` : '';
+}
+
+function v3Rank(card) {
+    return card && CARD_RANKS[card.value]
+        ? CARD_RANKS[card.value]
+        : 0;
+}
+
+function v3IsTrump(room, card) {
+    return !!(card && room.trumpSuit && card.suit === room.trumpSuit);
+}
+
+function v3IsPoint(card) {
+    return !!(card && (card.value === '10' || card.value === '5'));
+}
+
+function v3PointValue(card) {
+    if (!card) return 0;
+    if (card.value === '10') return 10;
+    if (card.value === '5') return 5;
+    return 0;
+}
+
+function v3Played(room, card) {
+    if (!card || !room.playedHistory) return false;
+    return room.playedHistory.some(c => v3CardKey(c) === v3CardKey(card));
+}
+
+function v3RemainingInSuit(room, suit) {
+    const allRanks = Object.keys(CARD_RANKS);
+    const played = room.playedHistory || [];
+    return allRanks.filter(value =>
+        !played.some(c => c.suit === suit && c.value === value)
+    );
+}
+
+function v3HighestRemainingRank(room, suit) {
+    const ranks = v3RemainingInSuit(room, suit)
+        .map(v => CARD_RANKS[v])
+        .sort((a, b) => b - a);
+    return ranks.length ? ranks[0] : 0;
+}
+
+function v3IsHighestRemaining(room, card) {
+    if (!card) return false;
+    return v3HighestRemainingRank(room, card.suit) === v3Rank(card);
+}
+
+function v3CardsOfSuit(hand, suit) {
+    return (hand || []).filter(c => c.suit === suit);
+}
+
+function v3KnownVoidCount(room, suit, opponentsOnlyForSeat) {
+    let count = 0;
+    for (let seat = 0; seat < 4; seat++) {
+        if (opponentsOnlyForSeat !== undefined &&
+            isSameTeam(seat, opponentsOnlyForSeat)) continue;
+        if (playerHasVoidSuit(room, seat, suit)) count++;
+    }
+    return count;
+}
+
+function v3TrickPoints(room) {
+    return getCurrentRoundPoints(room);
+}
+
+function v3RemainingTricks(room, seatIndex) {
+    const hand = room.hands && room.hands[seatIndex] || [];
+    return hand.length;
+}
+
+function v3TeamScore(room, seatIndex) {
+    return isSameTeam(seatIndex, 0)
+        ? Number(room.teamAScore || 0)
+        : Number(room.teamBScore || 0);
+}
+
+function v3OpponentScore(room, seatIndex) {
+    return isSameTeam(seatIndex, 0)
+        ? Number(room.teamBScore || 0)
+        : Number(room.teamAScore || 0);
+}
+
+function v3ContractPressure(room, seatIndex) {
+    const bid = Number(room.highestBid || 0);
+    if (!bid) return 0;
+    const own = v3TeamScore(room, seatIndex);
+    const opp = v3OpponentScore(room, seatIndex);
+
+    // If our team is dealer, protecting the contract matters.
+    if (room.dealer !== -1 && isSameTeam(room.dealer, seatIndex)) {
+        return Math.max(0, bid - own) * 2;
+    }
+
+    // If opponents are dealer, denying their contract matters.
+    if (room.dealer !== -1 && !isSameTeam(room.dealer, seatIndex)) {
+        return Math.max(0, bid - opp) * 1.6;
+    }
+
+    return 0;
+}
+
+function v3EndGameFactor(room, seatIndex) {
+    const hand = room.hands && room.hands[seatIndex] || [];
+    const n = hand.length;
+    if (n <= 2) return 18;
+    if (n <= 4) return 12;
+    if (n <= 6) return 6;
+    return 0;
+}
+
+function v3CardSecurity(room, seatIndex, card) {
+    if (!card) return 0;
+
+    let s = 0;
+    const partner = getPartnerSeat(seatIndex);
+    const winning = getCurrentWinningCard(room);
+
+    // A is valuable when it is still alive.
+    if (card.value === 'A' && !hasAceBeenPlayed(room, card.suit)) {
+        s += 18;
+    }
+
+    // High card is more secure when all higher cards are gone.
+    if (v3IsHighestRemaining(room, card)) {
+        s += 10;
+    }
+
+    // If opponents are void in this suit, a non-trump card can be dangerous:
+    // they may trump it. Conversely, if partner is void, partner may be able
+    // to trump it, which can be useful.
+    if (playerHasVoidSuit(room, partner, card.suit)) s += 7;
+
+    for (let seat = 0; seat < 4; seat++) {
+        if (seat === seatIndex || seat === partner) continue;
+        if (playerHasVoidSuit(room, seat, card.suit)) s -= 5;
+    }
+
+    // Keep trump unless it is needed.
+    if (v3IsTrump(room, card)) s += 7;
+
+    // Points are not intrinsically bad: protect them until they can be won.
+    if (v3IsPoint(card)) s += 6;
+
+    if (winning.seat === partner) {
+        if (v3IsPoint(card)) s += 12;
+        else s -= 2;
+    }
+
+    return s;
+}
+
+function v3CanBeatCurrent(room, card) {
+    const winning = getCurrentWinningCard(room);
+    if (!winning.card) return true;
+    return canBeatCard(room, card, winning.card);
+}
+
+function v3ImmediateTrickValue(room, seatIndex, card) {
+    if (!card) return -100;
+
+    const winning = getCurrentWinningCard(room);
+    const partner = getPartnerSeat(seatIndex);
+    const points = v3TrickPoints(room);
+    const beats = v3CanBeatCurrent(room, card);
+
+    let s = 0;
+
+    if (beats) {
+        s += 14 + points * 3;
+
+        if (winning.seat === partner) {
+            // Killing partner is usually bad unless it gains enough points
+            // or prevents an opponent from stealing a valuable trick.
+            s -= 20;
+            s -= Math.max(0, 15 - points * 2);
+        } else if (winning.seat !== seatIndex) {
+            s += 8;
+        }
+    } else {
+        s -= points * 1.8;
+    }
+
+    if (v3IsPoint(card)) {
+        if (winning.seat === partner) s += points * 1.5;
+        else if (!beats) s -= 8;
+    }
+
+    // A/K used as a winning card is expensive; only reward it when useful.
+    if ((card.value === 'A' || card.value === 'K') && beats) {
+        if (points === 0 && winning.seat !== partner) s -= 5;
+    }
+
+    return s;
+}
+
+function v3LeadValue(room, seatIndex, card) {
+    const hand = room.hands && room.hands[seatIndex] || [];
+    const partner = getPartnerSeat(seatIndex);
+    let s = 0;
+
+    if (!card) return -100;
+
+    // Opening with the highest remaining card is generally strong.
+    if (v3IsHighestRemaining(room, card)) s += 14;
+
+    if (card.value === 'A') s += 15;
+    if (card.value === 'K') s += 7;
+
+    // User's rule: don't burn 10/5 when there is a better non-point lead.
+    if (v3IsPoint(card)) s -= 18;
+
+    // If dealer/opponent is void, leading that suit can force awkward play.
+    if (room.dealer !== -1 && playerHasVoidSuit(room, room.dealer, card.suit)) {
+        s += 8;
+    }
+
+    // Do not casually expose a valuable point card to a void opponent.
+    if (v3IsPoint(card)) {
+        for (let seat = 0; seat < 4; seat++) {
+            if (!isSameTeam(seat, seatIndex) &&
+                playerHasVoidSuit(room, seat, card.suit)) {
+                s -= 8;
+            }
+        }
+    }
+
+    // Preserve an ace when partner is dealer unless opening it is clearly useful.
+    if (shouldSaveAceForPartnerDealer(room, seatIndex, card)) {
+        s -= 12;
+    }
+
+    // Prefer suits where partner is known void: partner can potentially trump
+    // the lead, especially when this is a low card.
+    if (playerHasVoidSuit(room, partner, card.suit)) s += 5;
+
+    s += v3CardSecurity(room, seatIndex, card) * 0.35;
+    return s;
+}
+
+function v3FollowValue(room, seatIndex, card, position) {
+    const partner = getPartnerSeat(seatIndex);
+    const winning = getCurrentWinningCard(room);
+    const legal = getLegalCards(room, seatIndex);
+    const beats = v3CanBeatCurrent(room, card);
+    const points = v3TrickPoints(room);
+
+    let s = v3ImmediateTrickValue(room, seatIndex, card);
+
+    // P2/P3/P4: preserve the explicit "smallest winning card" concept.
+    if (beats && winning.seat !== partner) {
+        const winners = legal
+            .filter(x => v3CanBeatCurrent(room, x.card))
+            .sort((a, b) => v3Rank(a.card) - v3Rank(b.card));
+        if (winners.length && winners[0].idx === legal.find(x => x.card === card)?.idx) {
+            s += 8;
+        }
+
+        // Avoid 10/5 if a cheaper winner exists.
+        if (v3IsPoint(card)) s -= 12;
+    }
+
+    // If partner wins, dump a non-point card.
+    if (winning.seat === partner) {
+        if (!v3IsPoint(card)) s += 16;
+        else s -= 12;
+
+        // Never overtake partner just to take a zero-point trick.
+        if (beats) s -= 16;
+    }
+
+    // If the opponent has a valuable current winner, taking the trick is worth more.
+    if (winning.seat !== partner && winning.seat !== seatIndex && beats) {
+        s += points * 2.5;
+        if (room.dealer !== -1 &&
+            !isSameTeam(room.dealer, seatIndex)) {
+            s += points * 1.5;
+        }
+    }
+
+    // When cannot win, smallest non-point is preferred.
+    if (!beats) {
+        if (!v3IsPoint(card)) s += 12;
+        if (card.value === '5') s -= 7;
+        if (card.value === '10') s -= 10;
+    }
+
+    // If this is the last/near-last trick, point collection matters more.
+    s += v3EndGameFactor(room, seatIndex) * (points > 0 && beats ? 1.2 : 0);
+
+    // User's special example: if lead is one suit and second card is trump,
+    // don't waste trump if we have the lead suit.
+    if (position >= 2) {
+        const starter = room.starterPlayer;
+        const lead = room.currentRoundCards[starter];
+        if (lead && lead.suit !== room.trumpSuit &&
+            card.suit === room.trumpSuit &&
+            !v3IsHighestRemaining(room, card)) {
+            const hasLeadSuit = legal.some(x => x.card.suit === lead.suit);
+            if (hasLeadSuit) s -= 16;
+        }
+    }
+
+    return s;
+}
+
+function v3SimulateWinner(room, seatIndex, card) {
+    const old = room.currentRoundCards;
+    const simulated = old.slice();
+    simulated[seatIndex] = card;
+
+    const shadow = Object.create(room);
+    shadow.currentRoundCards = simulated;
+
+    return getCurrentWinningCard(shadow);
+}
+
+function v3FutureLeadEstimate(room, seatIndex, candidate) {
+    // Estimate what happens if this candidate wins the current trick:
+    // the winner gets the next lead. We cannot know hidden hands, so use
+    // known information only and evaluate the best lead from that hand.
+    const simulatedWinner = v3SimulateWinner(room, seatIndex, candidate);
+    const winnerSeat = simulatedWinner.seat;
+
+    if (winnerSeat < 0) return 0;
+
+    const hand = room.hands && room.hands[winnerSeat] || [];
+    if (!hand.length) return 0;
+
+    let best = -Infinity;
+    for (const c of hand) {
+        if (c === candidate) continue;
+        if (v3Played(room, c)) continue;
+
+        let value = 0;
+        if (c.value === 'A') value += 12;
+        if (c.value === 'K') value += 7;
+        if (c.value === 'Q') value += 4;
+        if (v3IsHighestRemaining(room, c)) value += 8;
+        if (v3IsPoint(c)) value -= 5;
+        if (c.suit === room.trumpSuit) value += 3;
+
+        if (value > best) best = value;
+    }
+
+    return isSameTeam(winnerSeat, seatIndex) ? best * 1.35 : -best * 0.65;
+}
+
+function v3CandidateScore(room, seatIndex, item, position) {
+    const card = item.card;
+    if (!card) return -999999;
+
+    let score = 0;
+
+    if (position === 0) {
+        score += v3LeadValue(room, seatIndex, card);
+    } else {
+        score += v3FollowValue(room, seatIndex, card, position);
+    }
+
+    // Counted-card pressure:
+    // if many higher cards have already disappeared, this card is safer.
+    if (v3IsHighestRemaining(room, card)) {
+        score += 9;
+    }
+
+    // Remaining high cards above this candidate.
+    const higherRemaining = v3RemainingInSuit(room, card.suit)
+        .map(v => CARD_RANKS[v])
+        .filter(r => r > v3Rank(card)).length;
+    score -= higherRemaining * 2.2;
+
+    // Known voids can change the value of a suit.
+    const voidOpp = v3KnownVoidCount(room, card.suit, seatIndex);
+    score -= voidOpp * (v3IsPoint(card) ? 3 : 1);
+
+    // Contract pressure.
+    score += v3ContractPressure(room, seatIndex);
+
+    // End-game: stop hoarding when only a few cards remain.
+    const end = v3EndGameFactor(room, seatIndex);
+    if (end) {
+        if (v3IsPoint(card)) score += 2.5;
+        if (v3IsHighestRemaining(room, card)) score += 4;
+    }
+
+    // One-trick look-ahead.
+    score += v3FutureLeadEstimate(room, seatIndex, card) * 0.55;
+
+    // Small protection bonus/penalty.
+    score += v3CardSecurity(room, seatIndex, card) * 0.45;
+
+    return score;
+}
+
+function v3RulePick(room, seatIndex, legalCards) {
+    const position = getPlayPosition(room, seatIndex);
+    if (position === 0) return chooseP1Card(room, seatIndex, legalCards);
+    if (position === 1) return chooseP2Card(room, seatIndex, legalCards);
+    if (position === 2) return chooseP3Card(room, seatIndex, legalCards);
+    return chooseP4Card(room, seatIndex, legalCards);
+}
+
+// =============================================================
+// V3 main selector
+// =============================================================
+function getSmartAICardIndex(room, seatIndex) {
+    const legalCards = getLegalCards(room, seatIndex);
+    if (!legalCards || legalCards.length === 0) return 0;
+
+    const position = getPlayPosition(room, seatIndex);
+    const rulePick = v3RulePick(room, seatIndex, legalCards);
+
+    const scored = legalCards.map(item => ({
+        item,
+        score: v3CandidateScore(room, seatIndex, item, position)
+    }));
+
+    // The original user rules remain dominant.
+    if (rulePick) {
+        const rule = scored.find(x => x.item.idx === rulePick.idx);
+        if (rule) rule.score += 30;
+    }
+
+    // Strong hard rule: when partner already wins, prefer non-point sacrifice.
+    const winning = getCurrentWinningCard(room);
+    const partner = getPartnerSeat(seatIndex);
+    if (position > 0 && winning.seat === partner) {
+        const safe = scored.filter(x => !v3IsPoint(x.item.card));
+        if (safe.length) {
+            safe.forEach(x => x.score += 14);
+        }
+    }
+
+    // If opponent wins a valuable trick, reward the smallest legal winner.
+    if (position > 0 &&
+        winning.seat !== partner &&
+        winning.seat !== seatIndex &&
+        v3TrickPoints(room) > 0) {
+
+        const winners = scored
+            .filter(x => v3CanBeatCurrent(room, x.item.card))
+            .sort((a, b) => v3Rank(a.item.card) - v3Rank(b.item.card));
+
+        if (winners.length) winners[0].score += 18;
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+
+    // Deterministic tie break: lower rank first when scores are close,
+    // unless it is an opening lead where high control is preferred.
+    const best = scored[0];
+    const tied = scored.filter(x => Math.abs(x.score - best.score) < 0.5);
+
+    if (tied.length > 1 && position > 0) {
+        tied.sort((a, b) => {
+            const pa = v3IsPoint(a.item.card) ? 1 : 0;
+            const pb = v3IsPoint(b.item.card) ? 1 : 0;
+            if (pa !== pb) return pa - pb;
+            return v3Rank(a.item.card) - v3Rank(b.item.card);
+        });
+        return tied[0].item.idx;
+    }
+
+    return best.item.idx;
+}
+
+// =============================================================
+// V3 diagnostics
+// =============================================================
+function getAIV3Analysis(room, seatIndex) {
+    const legal = getLegalCards(room, seatIndex) || [];
+    const position = getPlayPosition(room, seatIndex);
+    const winning = getCurrentWinningCard(room);
+
+    return legal
+        .map(item => ({
+            card: item.card,
+            idx: item.idx,
+            score: Number(v3CandidateScore(room, seatIndex, item, position).toFixed(2)),
+            highestRemaining: v3IsHighestRemaining(room, item.card),
+            point: v3PointValue(item.card),
+            canBeat: v3CanBeatCurrent(room, item.card),
+            knownVoidOpponents: v3KnownVoidCount(room, item.card.suit, seatIndex),
+            higherRemaining:
+                v3RemainingInSuit(room, item.card.suit)
+                    .map(v => CARD_RANKS[v])
+                    .filter(r => r > v3Rank(item.card)).length
+        }))
+        .sort((a, b) => b.score - a.score);
+}
+
+function debugAIV3(room, seatIndex) {
+    const analysis = getAIV3Analysis(room, seatIndex);
+    console.log('========== AI V3 ANALYSIS ==========');
+    console.log('seat:', seatIndex);
+    console.log('position:', getPlayPosition(room, seatIndex) + 1);
+    console.log('dealer:', room.dealer);
+    console.log('trump:', room.trumpSuit);
+    console.log('table:', room.currentRoundCards);
+    console.log('winning:', getCurrentWinningCard(room));
+    console.table(analysis);
+    console.log('====================================');
+}
+
+
 if (
     typeof module !== 'undefined' &&
     module.exports
@@ -5579,6 +6463,12 @@ if (
 
         // Debug
         debugAIState,
-        testAI
+        testAI,
+
+        // AI V3
+        getAIV3Analysis,
+        debugAIV3,
+        v3CandidateScore,
+        v3FutureLeadEstimate
     };
 }
