@@ -86,8 +86,10 @@
         <div class="bg-green-900/90 p-6 rounded-2xl shadow-2xl w-full max-w-xs text-center border border-green-700 backdrop-blur-sm">
             <input type="text" id="playerName" placeholder="กรอกชื่อของคุณ" class="w-full p-3 mb-4 text-black bg-white rounded-xl font-bold text-center outline-none border-2 border-yellow-500 focus:ring-2 focus:ring-yellow-400">
             
-            <button onclick="createSinglePlayer()" class="w-full bg-purple-600 active:bg-purple-700 text-white font-bold py-3 rounded-xl mb-3 shadow-md transition">🤖 เล่นกับ บอท AI</button>
-            <button onclick="createRoom()" class="w-full bg-yellow-500 active:bg-yellow-600 text-black font-bold py-3 rounded-xl mb-3 shadow-md transition">👥 สร้างห้องเล่นกับเพื่อน</button>
+            <button onclick="createSinglePlayer()" class="w-full bg-purple-600 active:bg-purple-700 text-white font-bold py-3 rounded-xl mb-3 shadow-md transition">🤖 เล่น 4 คนกับบอท AI</button>
+            <button onclick="create1v1AI()" class="w-full bg-indigo-600 active:bg-indigo-700 text-white font-bold py-3 rounded-xl mb-3 shadow-md transition">🤖 1 VS 1 กับบอท (คุณนั่ง 1 + 3)</button>
+            <button onclick="createRoom()" class="w-full bg-yellow-500 active:bg-yellow-600 text-black font-bold py-3 rounded-xl mb-3 shadow-md transition">👥 สร้างห้อง 4 คนเล่นกับเพื่อน</button>
+            <button onclick="create1v1Room()" class="w-full bg-orange-500 active:bg-orange-600 text-black font-bold py-3 rounded-xl mb-3 shadow-md transition">👥 สร้างห้อง 1 VS 1 กับเพื่อน</button>
             
             <div class="relative flex py-2 items-center">
                 <div class="flex-grow border-t border-green-700"></div>
@@ -106,17 +108,17 @@
             <h2 class="text-xl font-bold mb-1 text-yellow-300">ห้องพักรอ - รหัส: <span id="room-code-display" class="text-white underline"></span></h2>
             <button onclick="copyRoomLink()" class="mb-4 bg-yellow-500 active:bg-yellow-400 text-black text-xs px-3 py-1.5 rounded-full font-bold shadow">📋 ก๊อปปี้ลิงก์ชวนเพื่อน</button>
 
-            <p class="text-xs text-gray-300 mb-3">แตะเลือกที่นั่ง (ทีม A: 0+2 | ทีม B: 1+3)</p>
+            <p id="lobby-mode-text" class="text-xs text-gray-300 mb-3">โหมด 4 คน: ทีม A = Seat 1+3 | ทีม B = Seat 2+4</p>
 
             <div class="grid grid-cols-2 gap-3 mb-5">
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-yellow-500/50">
-                    <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A (Seat 0 & 2)</h3>
+                    <h3 class="font-bold text-yellow-400 text-xs mb-2">ทีม A (Seat 1 & 3)</h3>
                     <div id="seat-0" onclick="selectSeat(0)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 0: ว่าง</div>
                     <div id="seat-2" onclick="selectSeat(2)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 2: ว่าง</div>
                 </div>
 
                 <div class="bg-green-950/80 p-2.5 rounded-xl border border-blue-500/50">
-                    <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B (Seat 1 & 3)</h3>
+                    <h3 class="font-bold text-blue-400 text-xs mb-2">ทีม B (Seat 2 & 4)</h3>
                     <div id="seat-1" onclick="selectSeat(1)" class="p-2.5 bg-green-800 text-xs rounded-lg border mb-2 cursor-pointer truncate">เก้าอี้ 1: ว่าง</div>
                     <div id="seat-3" onclick="selectSeat(3)" class="p-2.5 bg-green-800 text-xs rounded-lg border cursor-pointer truncate">เก้าอี้ 3: ว่าง</div>
                 </div>
@@ -220,7 +222,8 @@
 
         <!-- Hand Deck Bottom Bar -->
         <footer class="bg-green-900/90 pt-2 pb-3 border-t border-green-700 shadow-2xl z-10">
-            <div class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เรียกรวมตามดอก ♠ ♥️ ♣ ♦️):</div>
+            <div id="controlled-seat-switcher" class="hidden flex justify-center gap-2 mb-1"></div>
+            <div id="hand-label" class="text-[10px] text-center text-gray-300 font-semibold mb-1">ไพ่ในมือของคุณ (เรียงตามดอก ♠ ♥️ ♣ ♦️):</div>
             <div id="player-hand" class="hand-container min-h-[100px]"></div>
         </footer>
     </div>
@@ -256,6 +259,9 @@
         let mySeat = -1;
         let myRoomId = '';
         let myHand = [];
+        let myHands = {};
+        let controlledSeats = [];
+        let activeControlledSeat = -1;
         let selectedDiscardIndexes = [];
         let currentRoomState = null;
         let isChatOpen = false;
@@ -430,6 +436,17 @@
             socket.emit('createSinglePlayer', name);
         }
 
+        function create1v1AI() {
+            const name = document.getElementById('playerName').value || "คุณ";
+            socket.emit('create1v1AI', name);
+        }
+
+        function create1v1Room() {
+            const name = document.getElementById('playerName').value;
+            if (!name) return alert('กรอกชื่อก่อนครับ');
+            socket.emit('create1v1Room', name);
+        }
+
         function joinRoom() {
             const name = document.getElementById('playerName').value;
             const roomId = document.getElementById('roomIdInput').value;
@@ -516,13 +533,19 @@
         socket.on('roomCreated', (data) => {
             myRoomId = data.roomId;
             mySeat = data.seat;
+            controlledSeats = data.controlledSeats || [data.seat];
+            activeControlledSeat = controlledSeats[0] ?? data.seat;
             showRoomLobby();
+            updateControlledSeatSwitcher();
         });
 
         socket.on('joinedSuccess', (data) => {
             myRoomId = data.roomId;
             mySeat = data.seat;
+            controlledSeats = data.controlledSeats || [data.seat];
+            activeControlledSeat = controlledSeats[0] ?? data.seat;
             showRoomLobby();
+            updateControlledSeatSwitcher();
         });
 
         function showRoomLobby() {
@@ -534,21 +557,39 @@
         }
 
         socket.on('yourHand', (hand) => {
-            myHand = hand;
+            myHand = hand || [];
+            if (activeControlledSeat >= 0) myHands[activeControlledSeat] = myHand;
+            renderHand();
+        });
+
+        socket.on('yourHands', (data) => {
+            controlledSeats = data.controlledSeats || controlledSeats;
+            myHands = data.hands || {};
+            if (!controlledSeats.includes(activeControlledSeat)) {
+                activeControlledSeat = controlledSeats[0] ?? -1;
+            }
+            mySeat = controlledSeats[0] ?? -1;
+            myHand = activeControlledSeat >= 0 ? (myHands[activeControlledSeat] || []) : [];
+            updateControlledSeatSwitcher();
             renderHand();
         });
 
         socket.on('updateRoom', (room) => {
             currentRoomState = room;
+            if (room.mode === '1V1') {
+                document.getElementById('lobby-mode-text').innerText = 'โหมด 1 VS 1: คุณควบคุม Seat 1 + 3 | คู่แข่งควบคุม Seat 2 + 4';
+            } else {
+                document.getElementById('lobby-mode-text').innerText = 'โหมด 4 คน: ทีม A = Seat 1+3 | ทีม B = Seat 2+4';
+            }
             
             for (let i = 0; i < 4; i++) {
                 const seatEl = document.getElementById(`seat-${i}`);
                 const player = room.seats[i];
                 if (player) {
-                    seatEl.innerText = `เก้าอี้ ${i}: ${player.name}`;
+                    seatEl.innerText = `เก้าอี้ ${i + 1}: ${player.name}`;
                     seatEl.className = "p-2.5 bg-green-700 rounded-lg border border-yellow-400 font-bold mb-2 text-xs truncate";
                 } else {
-                    seatEl.innerText = `เก้าอี้ ${i}: ว่าง`;
+                    seatEl.innerText = `เก้าอี้ ${i + 1}: ว่าง`;
                     seatEl.className = "p-2.5 bg-green-950 rounded-lg border border-gray-700 text-xs truncate cursor-pointer hover:bg-green-800";
                 }
             }
@@ -565,9 +606,10 @@
         socket.on('updateGameState', (room) => {
             currentRoomState = room;
 
-            let myCurrentPlayer = room.seats.find(s => s && s.id === socket.id);
-            if (myCurrentPlayer) {
-                mySeat = myCurrentPlayer.seat;
+            controlledSeats = room.controlledSeats || controlledSeats;
+            updateControlledSeatSwitcher();
+            if (controlledSeats.length) {
+                mySeat = controlledSeats[0];
             }
 
             if (room.gameState !== 'LOBBY') {
@@ -636,20 +678,33 @@
 
             if (room.gameState === 'BIDDING') {
                 document.getElementById('game-status').innerText = `ตา P${room.bidTurn} (${room.seats[room.bidTurn].name}) เลือกประมูล`;
-                if (mySeat === room.bidTurn) {
+                if (controlledSeats.includes(room.bidTurn)) {
+                    activeControlledSeat = room.bidTurn;
+                    myHand = myHands[activeControlledSeat] || myHand;
+                    updateControlledSeatSwitcher();
+                    renderHand();
                     controls.classList.remove('hidden');
                     bidControls.classList.remove('hidden');
                     renderBidButtons(room.highestBid);
                 }
             } else if (room.gameState === 'SELECT_TRUMP') {
                 document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) ชนะประมูล! กำลังเลือกดอกหลัก...`;
-                if (mySeat === room.dealer) {
+                if (controlledSeats.includes(room.dealer)) {
+                    activeControlledSeat = room.dealer;
+                    myHand = myHands[activeControlledSeat] || myHand;
+                    selectedDiscardIndexes = [];
+                    updateControlledSeatSwitcher();
+                    renderHand();
                     controls.classList.remove('hidden');
                     trumpControls.classList.remove('hidden');
                 }
             } else if (room.gameState === 'KITTY_DISCARD') {
                 document.getElementById('game-status').innerText = `P${room.dealer} (${room.seats[room.dealer].name}) กำลังเลือกฝังไพ่ 4 ใบ...`;
-                if (mySeat === room.dealer) {
+                if (controlledSeats.includes(room.dealer)) {
+                    activeControlledSeat = room.dealer;
+                    myHand = myHands[activeControlledSeat] || myHand;
+                    updateControlledSeatSwitcher();
+                    renderHand();
                     controls.classList.remove('hidden');
                     kittyControls.classList.remove('hidden');
                 }
@@ -663,6 +718,12 @@
                     leadSuitInfo = ` | บังคับออก: ${leadCard.suit}`;
                 }
 
+                if (controlledSeats.includes(currentTurn)) {
+                    activeControlledSeat = currentTurn;
+                    myHand = myHands[currentTurn] || myHand;
+                    updateControlledSeatSwitcher();
+                    renderHand();
+                }
                 document.getElementById('game-status').innerText = `ตา P${currentTurn} (${room.seats[currentTurn].name}) ออกไพ่${leadSuitInfo}`;
             } else if (room.gameState === 'END') {
                 controls.classList.remove('hidden');
@@ -702,9 +763,41 @@
             });
         }
 
+        function updateControlledSeatSwitcher() {
+            const box = document.getElementById('controlled-seat-switcher');
+            if (!box) return;
+            box.innerHTML = '';
+            if (controlledSeats.length <= 1) {
+                box.classList.add('hidden');
+                return;
+            }
+            box.classList.remove('hidden');
+            controlledSeats.forEach(seat => {
+                const btn = document.createElement('button');
+                const isActive = seat === activeControlledSeat;
+                btn.className = `px-3 py-1 rounded-full text-[10px] font-bold ${isActive ? 'bg-yellow-500 text-black' : 'bg-green-800 text-white border border-green-600'}`;
+                btn.innerText = `ไพ่ Seat ${seat + 1}`;
+                btn.onclick = () => {
+                    activeControlledSeat = seat;
+                    mySeat = seat;
+                    myHand = myHands[seat] || [];
+                    selectedDiscardIndexes = [];
+                    updateControlledSeatSwitcher();
+                    renderHand();
+                };
+                box.appendChild(btn);
+            });
+        }
+
         function renderHand() {
             const handDiv = document.getElementById('player-hand');
             handDiv.innerHTML = '';
+            myHand = activeControlledSeat >= 0 ? (myHands[activeControlledSeat] || myHand || []) : (myHand || []);
+            const label = document.getElementById('hand-label');
+            if (label) {
+                label.innerText = controlledSeats.length > 1
+                    ? `ไพ่ในมือ Seat ${activeControlledSeat + 1} (คุณควบคุม)`: 'ไพ่ในมือของคุณ (เรียงตามดอก ♠ ♥️ ♣ ♦️):';
+            }
             myHand.forEach((card, index) => {
                 const cardEl = document.createElement('div');
                 const isSelected = selectedDiscardIndexes.includes(index);
@@ -752,7 +845,10 @@
                     btn.classList.add('opacity-50', 'cursor-not-allowed');
                 }
             } else if (currentRoomState.gameState === 'PLAYING') {
-                socket.emit('playCard', { roomId: myRoomId, cardIndex: index });
+                const playedCount = currentRoomState.currentRoundCards.filter(c => c !== null).length;
+                const currentTurn = (currentRoomState.starterPlayer + playedCount) % 4;
+                if (!controlledSeats.includes(currentTurn) || activeControlledSeat !== currentTurn) return;
+                socket.emit('playCard', { roomId: myRoomId, seatIndex: activeControlledSeat, cardIndex: index });
             }
         }
 
